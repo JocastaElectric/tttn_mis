@@ -9,7 +9,7 @@ package-lock.json
 
 # Uploads và file người dùng
 uploads/
-Code/Client/images/uploads/
+Code/Frontend/images/uploads/
 
 # IDE và editor
 .vscode/

@@ -323,16 +323,18 @@ exports.registerTopic = async (req, res) => {
             status: 'ACCEPTED'
         }).sort({ createdAt: 1 }).limit(2).select('member_code');
         const acceptedMemberCodes = acceptedRequests.map(request => normalizeCode(request.member_code));
-        const finalMemberCodes = [...new Set(
-            [member2_code, member3_code, ...acceptedMemberCodes].filter(Boolean)
-        )].slice(0, 2);
-        const finalMember2Code = finalMemberCodes[0] || null;
-        const finalMember3Code = finalMemberCodes[1] || null;
+        const finalMemberCodes = [member2_code, member3_code];
+        for (const acceptedMemberCode of acceptedMemberCodes) {
+            if (!acceptedMemberCode || finalMemberCodes.includes(acceptedMemberCode)) continue;
+            const emptySlot = finalMemberCodes.indexOf(null);
+            if (emptySlot === -1) break;
+            finalMemberCodes[emptySlot] = acceptedMemberCode;
+        }
 
         const newTopic = new Topic({
             leader_code,
-            member2_code: finalMember2Code,
-            member3_code: finalMember3Code,
+            member2_code: finalMemberCodes[0],
+            member3_code: finalMemberCodes[1],
             lecturer_code,
             title,
             description,

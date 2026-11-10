@@ -41,6 +41,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 2. KHAI BÁO BIẾN TRẠNG THÁI & DOM ELEMENTS
     // =========================================================================
     let isEditing = false;
+    let hasEditedMemberCodes = false;
     let allPoolTopics = [];
 
     // Header Info Elements
@@ -116,6 +117,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     [partnerInput, member3Input].forEach(inputEl => {
+        inputEl?.addEventListener("input", () => {
+            hasEditedMemberCodes = true;
+        });
         inputEl?.addEventListener("blur", () => clearCurrentStudentFromMemberField(inputEl));
     });
 
@@ -459,8 +463,10 @@ document.addEventListener("DOMContentLoaded", async () => {
                     if (roleRadio) roleRadio.checked = true;
 
                     await loadPartnerInfo(leaderNameEl, topic.leader_code);
-                    await loadPartnerInfo(partnerInput, topic.member2_code);
-                    await loadPartnerInfo(member3Input, topic.member3_code);
+                    if (!hasEditedMemberCodes) {
+                        await loadPartnerInfo(partnerInput, topic.member2_code);
+                        await loadPartnerInfo(member3Input, topic.member3_code);
+                    }
 
                     if (topic.status === "JOIN_PENDING" || topic.status === "JOIN_ACCEPTED" || topic.status === "JOIN_REJECTED") {
                         updateRoleUI("MEMBER");
@@ -790,6 +796,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                 if (res.ok) {
                     showMessage("success", data.message || "Lưu thông tin đăng ký đề tài thành công!");
+                    hasEditedMemberCodes = false;
                     await checkTopicStatus();
                 } else {
                     showMessage("error", data.message || "Thao tác đăng ký thất bại!");

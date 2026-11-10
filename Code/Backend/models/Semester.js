@@ -1,4 +1,4 @@
-// File: Server/models/Semester.js
+// File: Backend/models/Semester.js
 const mongoose = require('mongoose');
 
 const semesterSchema = new mongoose.Schema({
