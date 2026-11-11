@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Milestone & Hạn Nộp - Giảng Viên</title>
+
+    <!-- Font & Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="../../css/lecturer/lecturer.css">
+    <link rel="stylesheet" href="../../css/lecturer/lecturer-milestones.css">
+    <link rel="stylesheet" href="../../css/common/app-notifications.css">
+    <link rel="stylesheet" href="../../css/lecturer/lecturer-pending-alert.css">
+    <style>
+        .notification-btn {
+            position: relative;
+            cursor: pointer;
+            font-size: 18px;
+            color: #64748b;
+            padding: 4px;
+            text-decoration: none;
+        }
+        .badge-count {
+            position: absolute;
+            top: -2px;
+            right: -4px;
+            background-color: #ef4444;
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 10px;
+            line-height: 1.4;
+        }
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .avatar-icon {
+            font-size: 22px;
+            color: #2563eb;
+        }
+        .user-name {
+            font-weight: 600;
+            font-size: 13.5px;
+            color: #1e293b;
+        }
+        .user-badge {
+            background-color: #dbeafe;
+            color: #1d4ed8;
+            font-size: 10.5px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
+        .btn-logout {
+            background-color: #fff1f2;
+            color: #e11d48;
+            border: 1px solid #ffe4e6;
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        #logoutBtn,
+        #openLogoutBtn {
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-top">
+                <div class="brand-logo">
+                    <span class="logo-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+                    <h2>HỆ THỐNG QUẢN LÝ TTTN</h2>
+                </div>
+
+                <nav class="sidebar-menu">
+                    <ul>
+                        <li class="menu-item"><a href="lecturer-dashboard.html"><i class="fa-solid fa-border-all"></i> Dashboard</a></li>
+                        <li class="menu-item"><a href="lecturer-topics.html"><i class="fa-solid fa-book-bookmark"></i> Duyệt & Quản lý đề tài</a></li>
+                        <li class="menu-item"><a href="lecturer-groups.html"><i class="fa-solid fa-user-group"></i> Nhóm SV hướng dẫn</a></li>
+                        <li class="menu-item"><a href="lecturer-schedule.html"><i class="fa-solid fa-list-check"></i> Tiến độ & Lịch gặp</a></li>
+                        <li class="menu-item active"><a href="lecturer-milestones.html"><i class="fa-solid fa-calendar-check"></i> Milestone & Hạn nộp</a></li>
+                        <li class="menu-item"><a href="lecturer-docs.html"><i class="fa-solid fa-file-pdf"></i> Tài liệu & Biểu mẫu</a></li>
+                        <li class="menu-item"><a href="lecturer-settings.html"><i class="fa-solid fa-gear"></i> Cài đặt tài khoản</a></li>
+                    </ul>
+                </nav>
+            </div>
+
+            <div class="sidebar-bottom">
+                <div class="sidebar-footer">
+                    <p>© 2026 Khoa CNTT<br>All rights reserved.</p>
+                </div>
+            </div>
+        </aside>
+
+        <div class="main-wrapper">
+            <header class="top-navbar">
+                <div class="navbar-left">
+                    <button class="btn-menu-toggle"><i class="fa-solid fa-bars"></i></button>
+                </div>
+                <div class="navbar-right">
+                    <a href="lecturer-notifications.html" class="notification-btn" aria-label="Thông báo">
+                        <i class="fa-solid fa-bell"></i>
+                        <span id="headerBadgeCount" class="badge-count">0</span>
+                    </a>
+                    <div class="user-profile">
+                        <span class="avatar-icon"><i class="fa-solid fa-circle-user"></i></span>
+                        <span id="userName" class="user-name">--</span>
+                        <span id="userCode" class="user-badge">--</span>
+                    </div>
+                    <button id="logoutBtn" class="btn-logout">
+                        <i class="fa-solid fa-right-from-bracket"></i> Đăng xuất
+                    </button>
+                </div>
+            </header>
+
+            <main class="content-body">
+                <div class="page-title-box" style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px;">
+                    <div>
+                        <h2 style="font-size: 20px; font-weight: 800; color: #1e293b; margin-bottom: 6px;">Quản Lý Milestone & Hạn Nộp Bài</h2>
+                        <p class="subtitle" style="font-size: 13px; color: #64748b;">Thiết lập các mốc tiến độ và thời hạn nộp báo cáo cho các nhóm do bạn hướng dẫn.</p>
+                    </div>
+                    <button class="btn btn-primary" id="openAddModalBtn">
+                        <i class="fa-solid fa-plus"></i> Tạo Milestone Mới
+                    </button>
+                </div>
+
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <div class="summary-icon blue"><i class="fa-solid fa-flag"></i></div>
+                        <div class="summary-info">
+                            <span class="summary-label">Tổng số Milestone</span>
+                            <strong class="summary-value" id="totalCount">0</strong>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="summary-icon green"><i class="fa-solid fa-play"></i></div>
+                        <div class="summary-info">
+                            <span class="summary-label">Đang diễn ra</span>
+                            <strong class="summary-value" id="activeCount">0</strong>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="summary-icon orange"><i class="fa-regular fa-clock"></i></div>
+                        <div class="summary-info">
+                            <span class="summary-label">Sắp tới</span>
+                            <strong class="summary-value" id="upcomingCount">0</strong>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="card-panel margin-top-20">
+                    <div class="filter-bar">
+                        <div class="search-input-group">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="searchInput" placeholder="Tìm tên mốc tiến độ...">
+                        </div>
+
+                        <div class="filter-controls">
+                            <select id="statusFilter" class="select-box">
+                                <option value="">Tất cả Trạng thái</option>
+                                <option value="active">Đang mở</option>
+                                <option value="upcoming">Sắp mở</option>
+                                <option value="closed">Đã đóng</option>
+                            </select>
+
+                            <button id="resetFilterBtn" class="btn btn-outline"><i class="fa-solid fa-rotate-left"></i> Đặt lại</button>
+                        </div>
+                    </div>
+
+                    <div class="table-container margin-top-16">
+                        <table class="custom-table">
+                            <thead>
+                                <tr>
+                                    <th width="50">STT</th>
+                                    <th>Tên Milestone / Mốc Tiến Độ</th>
+                                    <th width="160">Thời Gian Bắt Đầu</th>
+                                    <th width="160">Hạn Nộp (Deadline)</th>
+                                    <th class="text-center" width="130">Trạng Thái</th>
+                                    <th class="text-center" width="120">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="milestoneTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="milestoneModal" class="modal-overlay">
+        <div class="modal-card modal-md">
+            <div class="modal-head">
+                <h3 id="modalTitle">Tạo Milestone Mới</h3>
+                <span class="close-modal" id="closeMilestoneModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="milestoneForm">
+                    <input type="hidden" id="milestoneId">
+
+                    <div class="form-group">
+                        <label class="form-label">Tên Milestone / Mốc Tiến Độ *</label>
+                        <input type="text" id="milestoneName" class="form-control" placeholder="Ví dụ: Báo cáo Tiến độ Giữa kỳ" required>
+                    </div>
+
+                    <div class="form-group margin-top-12">
+                        <label class="form-label">Mô tả / Yêu cầu nộp bài</label>
+                        <textarea id="milestoneDesc" class="form-control" rows="3" placeholder="Ghi chú chi tiết hoặc tài liệu đính kèm yêu cầu sinh viên..."></textarea>
+                    </div>
+
+                    <div class="form-row margin-top-12">
+                        <div class="form-group flex-1">
+                            <label class="form-label">Ngày bắt đầu mở *</label>
+                            <input type="datetime-local" id="startDate" class="form-control" required>
+                        </div>
+
+                        <div class="form-group flex-1">
+                            <label class="form-label">Hạn chót nộp (Deadline) *</label>
+                            <input type="datetime-local" id="endDate" class="form-control" required>
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+            <div class="modal-foot margin-top-16">
+                <button type="button" class="btn btn-outline" id="cancelMilestoneBtn">Hủy</button>
+                <button type="button" class="btn btn-primary" id="saveMilestoneBtn"><i class="fa-solid fa-floppy-disk"></i> Lưu Thông Tin</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="deleteModal" class="modal-overlay">
+        <div class="modal-card modal-sm text-center">
+            <div class="modal-icon-red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <h3>Xóa Milestone?</h3>
+            <p class="margin-top-8">Bạn có chắc chắn muốn xóa mốc tiến độ này? Thao tác này không thể hoàn tác.</p>
+            <div class="modal-foot center margin-top-16">
+                <button class="btn btn-outline" id="cancelDeleteBtn">Hủy</button>
+                <button class="btn btn-danger" id="confirmDeleteBtn">Xóa Mốc</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="logoutModal" class="modal-overlay">
+        <div class="modal-card modal-sm text-center">
+            <div class="modal-icon-red"><i class="fa-solid fa-arrow-right-from-bracket"></i></div>
+            <h3>Xác nhận đăng xuất</h3>
+            <p class="margin-top-8">Bạn có chắc chắn muốn thoát khỏi phiên giảng viên?</p>
+            <div class="modal-foot center margin-top-16">
+                <button class="btn btn-outline" id="cancelLogoutBtn">Hủy</button>
+                <button class="btn btn-danger" id="confirmLogoutBtn">Đăng xuất</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../../js/lecturer/lecturer.js"></script>
+    <script src="../../js/lecturer/lecturer-milestones.js"></script>
+    <script src="../../js/common/notif-badge.js"></script>
+    <script src="../../js/lecturer/lecturer-pending-alert.js"></script>
+    <script src="../../js/common/app-notifications.js"></script>
+    <script src="../../js/common/sidebar-toggle.js"></script>
+</body>
+</html>

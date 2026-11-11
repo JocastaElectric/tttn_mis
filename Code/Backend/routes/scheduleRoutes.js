@@ -29,6 +29,7 @@ router.get("/meetings", verifyToken, scheduleController.getLecturerMeetings);
 // Giảng viên chủ động tạo lịch họp mới
 router.post("/lecturer/meetings/create", verifyToken, scheduleController.createMeetingByLecturer);
 router.post("/lecturer/availability", verifyToken, scheduleController.createAvailabilitySlot);
+router.patch("/lecturer/availability/:id", verifyToken, scheduleController.updateAvailabilitySlot);
 router.patch("/lecturer/availability/:id/close", verifyToken, scheduleController.deleteAvailabilitySlot);
 router.post("/meetings", verifyToken, scheduleController.createMeetingByLecturer);
 

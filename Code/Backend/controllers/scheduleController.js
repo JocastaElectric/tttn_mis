@@ -1,6 +1,11 @@
 const { Meeting, Todo, AvailabilitySlot } = require("../models/Schedule");
 const Topic = require("../models/Topic");
 const Semester = require("../models/Semester"); // Import Model Semester để lấy cấu hình từ Admin
+const isValidDateOnly = value => {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
 
 // =========================================================
 // A. CÁC HÀM DÀNH CHO PHÍA SINH VIÊN (STUDENT)
@@ -158,8 +163,16 @@ exports.getAvailabilitySlots = async (req, res) => {
 exports.createAvailabilitySlot = async (req, res) => {
     try {
         const { lecturer_code, available_date, time_start, time_end, type, location, max_bookings } = req.body;
+        const requesterCode = String(req.user?.user_code || "").trim();
+        if (String(req.user?.role || "").toUpperCase() !== "LECTURER" ||
+            requesterCode.toUpperCase() !== String(lecturer_code || "").trim().toUpperCase()) {
+            return res.status(403).json({ success: false, message: "Bạn không có quyền công khai khung giờ này!" });
+        }
         if (!lecturer_code || !available_date || !time_start || !time_end) {
             return res.status(400).json({ success: false, message: "Vui lòng nhập đủ ngày và giờ rảnh!" });
+        }
+        if (!isValidDateOnly(available_date)) {
+            return res.status(400).json({ success: false, message: "Ngày rảnh không hợp lệ!" });
         }
 
         const todayInVietnam = new Intl.DateTimeFormat("en-CA", {
@@ -191,10 +204,104 @@ exports.createAvailabilitySlot = async (req, res) => {
     }
 };
 
+exports.updateAvailabilitySlot = async (req, res) => {
+    try {
+        const requesterCode = String(req.user?.user_code || "").trim();
+        if (String(req.user?.role || "").toUpperCase() !== "LECTURER" || !requesterCode) {
+            return res.status(403).json({ success: false, message: "Chỉ giảng viên mới được chỉnh sửa khung giờ!" });
+        }
+
+        const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const slot = await AvailabilitySlot.findOne({
+            _id: req.params.id,
+            lecturer_code: new RegExp(`^${escapeRegex(requesterCode)}$`, "i"),
+            status: { $in: ["OPEN", "FULL"] }
+        });
+        if (!slot) return res.status(404).json({ success: false, message: "Không tìm thấy khung giờ đang mở!" });
+
+        const { available_date, time_start, time_end, type, location, max_bookings } = req.body;
+        if (!available_date || !time_start || !time_end) {
+            return res.status(400).json({ success: false, message: "Vui lòng nhập đủ ngày và giờ rảnh!" });
+        }
+        if (!isValidDateOnly(available_date)) {
+            return res.status(400).json({ success: false, message: "Ngày rảnh không hợp lệ!" });
+        }
+        if (time_end <= time_start) {
+            return res.status(400).json({ success: false, message: "Giờ kết thúc phải sau giờ bắt đầu!" });
+        }
+        if (!["ONLINE", "OFFLINE"].includes(type)) {
+            return res.status(400).json({ success: false, message: "Hình thức khung giờ không hợp lệ!" });
+        }
+
+        const capacity = Number(max_bookings);
+        if (!Number.isInteger(capacity) || capacity < 1 || capacity > 20) {
+            return res.status(400).json({ success: false, message: "Số nhóm tối đa phải từ 1 đến 20!" });
+        }
+        if (capacity < slot.booked_count) {
+            return res.status(400).json({
+                success: false,
+                message: `Số nhóm tối đa không được thấp hơn số nhóm đã đặt (${slot.booked_count})!`
+            });
+        }
+
+        const todayInVietnam = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Ho_Chi_Minh",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit"
+        }).format(new Date());
+        if (available_date <= todayInVietnam) {
+            return res.status(400).json({ success: false, message: "Chỉ được mở khung giờ từ ngày mai trở đi!" });
+        }
+
+        const currentDate = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Ho_Chi_Minh",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit"
+        }).format(slot.available_date);
+        if (slot.booked_count > 0 && (
+            available_date !== currentDate ||
+            time_start !== slot.time_start ||
+            time_end !== slot.time_end ||
+            type !== slot.type ||
+            (location || "") !== slot.location
+        )) {
+            return res.status(400).json({
+                success: false,
+                message: "Khung giờ đã có nhóm đặt; chỉ có thể chỉnh sửa số nhóm tối đa để không ảnh hưởng lịch hẹn!"
+            });
+        }
+
+        slot.available_date = new Date(`${available_date}T00:00:00`);
+        slot.time_start = time_start;
+        slot.time_end = time_end;
+        slot.type = type;
+        slot.location = location || "";
+        slot.max_bookings = capacity;
+        slot.status = slot.booked_count >= capacity ? "FULL" : "OPEN";
+        await slot.save();
+
+        return res.json({ success: true, data: slot, message: "Đã cập nhật khung giờ rảnh!" });
+    } catch (error) {
+        console.error("Lỗi cập nhật khung giờ rảnh:", error);
+        return res.status(500).json({ success: false, message: "Không thể cập nhật khung giờ rảnh!" });
+    }
+};
+
 exports.deleteAvailabilitySlot = async (req, res) => {
     try {
+        const requesterCode = String(req.user?.user_code || "").trim();
+        if (String(req.user?.role || "").toUpperCase() !== "LECTURER" || !requesterCode) {
+            return res.status(403).json({ success: false, message: "Chỉ giảng viên mới được đóng khung giờ!" });
+        }
+        const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const slot = await AvailabilitySlot.findOneAndUpdate(
-            { _id: req.params.id, lecturer_code: req.body.lecturer_code, status: "OPEN" },
+            {
+                _id: req.params.id,
+                lecturer_code: new RegExp(`^${escapeRegex(requesterCode)}$`, "i"),
+                status: { $in: ["OPEN", "FULL"] }
+            },
             { status: "CLOSED" },
             { new: true }
         );
