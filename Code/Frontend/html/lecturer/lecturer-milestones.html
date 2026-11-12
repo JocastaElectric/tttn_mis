@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="../../css/lecturer/lecturer.css">
     <link rel="stylesheet" href="../../css/lecturer/lecturer-milestones.css">
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
+    <link rel="stylesheet" href="../../css/common/lecturer-logout-modal.css">
+    <link rel="stylesheet" href="../../css/common/confirm-dialog.css">
     <link rel="stylesheet" href="../../css/lecturer/lecturer-pending-alert.css">
     <style>
         .notification-btn {
@@ -259,22 +261,25 @@
     </div>
 
     <div id="logoutModal" class="modal-overlay">
-        <div class="modal-card modal-sm text-center">
-            <div class="modal-icon-red"><i class="fa-solid fa-arrow-right-from-bracket"></i></div>
+        <div class="modal-box">
+            <div class="modal-icon"><i class="fa-solid fa-right-from-bracket"></i></div>
             <h3>Xác nhận đăng xuất</h3>
-            <p class="margin-top-8">Bạn có chắc chắn muốn thoát khỏi phiên giảng viên?</p>
-            <div class="modal-foot center margin-top-16">
-                <button class="btn btn-outline" id="cancelLogoutBtn">Hủy</button>
-                <button class="btn btn-danger" id="confirmLogoutBtn">Đăng xuất</button>
+            <p>Bạn có chắc chắn muốn thoát khỏi hệ thống giảng viên không?</p>
+            <div class="modal-actions">
+                <button type="button" id="cancelLogoutBtn" class="btn-cancel">Hủy bỏ</button>
+                <button type="button" id="confirmLogoutBtn" class="btn-confirm">Đăng xuất</button>
             </div>
         </div>
     </div>
 
+    <script src="../../js/config.js"></script>
+    <script src="../../js/common/confirm-dialog.js"></script>
     <script src="../../js/lecturer/lecturer.js"></script>
     <script src="../../js/lecturer/lecturer-milestones.js"></script>
     <script src="../../js/common/notif-badge.js"></script>
     <script src="../../js/lecturer/lecturer-pending-alert.js"></script>
     <script src="../../js/common/app-notifications.js"></script>
     <script src="../../js/common/sidebar-toggle.js"></script>
+    <script src="../../js/common/lecturer-logout-dialog.js"></script>
 </body>
 </html>

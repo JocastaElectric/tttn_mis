@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:5000";
+const API_BASE = window.APP_CONFIG.API_BASE_URL + "";
 
 document.addEventListener("DOMContentLoaded", () => {
     const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
@@ -85,7 +85,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function deleteDocument(id) {
-        if (!confirm("Bạn có chắc muốn xóa tài liệu này khỏi trang sinh viên không?")) return;
+        const confirmed = await window.showConfirmDialog({
+            title: "Xác nhận xóa tài liệu",
+            message: "Bạn có chắc muốn xóa tài liệu này khỏi trang sinh viên không?",
+            confirmText: "Xóa tài liệu",
+            danger: true
+        });
+        if (!confirmed) return;
         const response = await fetch(`${API_BASE}/api/documents/${id}`, { method: "DELETE", headers: authHeaders });
         const result = await response.json();
         if (!response.ok || !result.success) return showAppNotification(result.message || "Xóa tài liệu thất bại!");

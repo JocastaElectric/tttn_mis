@@ -28,11 +28,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const cancelDeleteBtn = document.getElementById("cancelDeleteBtn");
     const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
 
-    const logoutModal = document.getElementById("logoutModal");
-    const openLogoutBtn = document.getElementById("logoutBtn");
-    const cancelLogout = document.getElementById("cancelLogoutBtn");
-    const confirmLogout = document.getElementById("confirmLogoutBtn");
-
     async function requestMilestones(path, method = "GET", body) {
         const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
         if (!auth?.token) throw new Error("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
@@ -46,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
             options.body = JSON.stringify(body);
         }
 
-        const response = await fetch(`http://localhost:5000/api/milestones${path}`, options);
+        const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/milestones${path}`, options);
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || "Không thể lưu milestone.");
         return result;
@@ -54,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function notify(message) {
         if (typeof showAppNotification === "function") showAppNotification(message);
-        else window.alert(message);
+        else window.showMessageDialog(message);
     }
 
     function toDateTimeLocal(value) {
@@ -247,14 +242,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (closeMilestoneModal && milestoneModal) closeMilestoneModal.onclick = () => milestoneModal.style.display = "none";
     if (cancelMilestoneBtn && milestoneModal) cancelMilestoneBtn.onclick = () => milestoneModal.style.display = "none";
     if (cancelDeleteBtn && deleteModal) cancelDeleteBtn.onclick = () => deleteModal.style.display = "none";
-
-    if (openLogoutBtn && logoutModal) openLogoutBtn.onclick = () => logoutModal.style.display = "flex";
-    if (cancelLogout && logoutModal) cancelLogout.onclick = () => logoutModal.style.display = "none";
-    if (confirmLogout) confirmLogout.onclick = () => {
-        localStorage.clear();
-        sessionStorage.clear();
-        window.location.href = "../auth/index.html";
-    };
 
     loadMilestones();
 });

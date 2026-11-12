@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", async () => {
-    const baseUrl = "http://localhost:5000/api";
-
+    const baseUrl = window.APP_CONFIG.API_BASE_URL + "/api";
+    const pageSize = 50;
     const authRaw = sessionStorage.getItem("activeAuth");
     let token = null;
     let user = null;
@@ -20,160 +20,280 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
     }
 
-    let logList = [];
-
-    async function fetchLogs() {
-        try {
-            const response = await fetch(`${baseUrl}/activity-logs`, {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            });
-            const result = await response.json();
-
-            if (!response.ok || !result || !Array.isArray(result.data)) {
-                throw new Error(result?.message || 'Không tải được nhật ký hoạt động');
-            }
-
-            logList = result.data.map(item => ({
-                ...item,
-                timestamp: item.createdAt || item.updatedAt || item.timestamp,
-                user: item.user_name || item.user || 'Không xác định',
-                email: item.email || item.user_email || '-',
-                role: item.role || 'GUEST',
-                actionType: item.actionType || item.method || 'OTHER',
-                actionText: item.actionText || `${item.method || ''} ${item.url || ''}`,
-                ip: item.ip || item.ip_address || 'Unknown'
-            }));
-
-            updateSummary();
-            renderLogs(logList);
-        } catch (error) {
-            console.error('Lỗi tải nhật ký hoạt động:', error);
-            if (tableBody) {
-                tableBody.innerHTML = `<tr><td colspan="6" class="text-center" style="padding: 20px; color: #ef4444;">Không thể tải dữ liệu nhật ký hoạt động từ máy chủ.</td></tr>`;
-            }
-        }
-    }
-
-    // DOM ELEMENTS
     const tableBody = document.getElementById("logsTableBody");
     const searchInput = document.getElementById("searchInput");
     const roleFilter = document.getElementById("roleFilter");
     const actionTypeFilter = document.getElementById("actionTypeFilter");
     const resetFilterBtn = document.getElementById("resetFilterBtn");
     const exportLogBtn = document.getElementById("exportLogBtn");
-
+    const pageInfo = document.getElementById("logsPageInfo");
+    const previousPageBtn = document.getElementById("previousLogsPage");
+    const nextPageBtn = document.getElementById("nextLogsPage");
     const logoutModal = document.getElementById("logoutModal");
     const openLogoutBtn = document.getElementById("openLogoutBtn");
     const cancelLogout = document.getElementById("cancelLogout");
     const confirmLogout = document.getElementById("confirmLogout");
 
-    // 2. CẬP NHẬT SUMMARY CARDS
-    function updateSummary() {
-        const totalLogsEl = document.getElementById("totalLogs");
-        const adminLogsEl = document.getElementById("adminLogs");
-        const lecturerLogsEl = document.getElementById("lecturerLogs");
-        const studentLogsEl = document.getElementById("studentLogs");
+    let currentPage = 1;
+    let totalFiltered = 0;
+    let logList = [];
+    let searchTimer;
 
-        if (totalLogsEl) totalLogsEl.textContent = logList.length;
-        if (adminLogsEl) adminLogsEl.textContent = logList.filter(l => l.role === "ADMIN").length;
-        if (lecturerLogsEl) lecturerLogsEl.textContent = logList.filter(l => l.role === "LECTURER").length;
-        if (studentLogsEl) studentLogsEl.textContent = logList.filter(l => l.role === "STUDENT").length;
+    function getFilterParams() {
+        const params = new URLSearchParams();
+        const role = roleFilter?.value || "";
+        const actionType = actionTypeFilter?.value || "";
+        const search = searchInput?.value.trim() || "";
+        if (role) params.set("role", role);
+        if (actionType) params.set("actionType", actionType);
+        if (search) params.set("search", search);
+        return params;
     }
 
-    // FORMAT DATETIME
+    function updateSummary(stats = {}) {
+        document.getElementById("totalLogs").textContent = stats.total || 0;
+        document.getElementById("adminLogs").textContent = stats.ADMIN || 0;
+        document.getElementById("lecturerLogs").textContent = stats.LECTURER || 0;
+        document.getElementById("studentLogs").textContent = stats.STUDENT || 0;
+        document.getElementById("guestLogs").textContent = stats.GUEST || 0;
+    }
+
+    function updatePagination() {
+        const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+        if (pageInfo) {
+            if (!totalFiltered) {
+                pageInfo.textContent = "Không có nhật ký phù hợp.";
+            } else {
+                const first = (currentPage - 1) * pageSize + 1;
+                const last = Math.min(currentPage * pageSize, totalFiltered);
+                pageInfo.textContent = `Hiển thị ${first}–${last} trên ${totalFiltered} nhật ký (trang ${currentPage}/${totalPages})`;
+            }
+        }
+        if (previousPageBtn) previousPageBtn.disabled = currentPage <= 1;
+        if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
+    }
+
+    async function fetchLogs() {
+        const params = getFilterParams();
+        params.set("page", String(currentPage));
+        params.set("limit", String(pageSize));
+        try {
+            const response = await fetch(`${baseUrl}/activity-logs?${params}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const result = await response.json();
+            if (!response.ok || !result?.success || !Array.isArray(result.data)) {
+                throw new Error(result?.message || "Không tải được nhật ký hoạt động.");
+            }
+
+            currentPage = result.page;
+            totalFiltered = result.total;
+            logList = result.data.map(item => {
+                const loggedName = String(item.user_name || "").trim();
+                const usesGuestFallback = ["khách", "guest"].includes(loggedName.toLowerCase());
+                return {
+                    ...item,
+                    timestamp: item.createdAt || item.updatedAt,
+                    user: usesGuestFallback
+                        ? item.user_code || loggedName || "Khách"
+                        : loggedName || item.user_code || "Khách",
+                    email: item.email || "-",
+                    role: item.role || "GUEST",
+                    actionType: item.actionType || "OTHER",
+                    actionText: item.actionText || `${item.method || ""} ${item.url || ""}`,
+                    ip: item.ip || "Không rõ",
+                    statusCode: item.statusCode
+                };
+            });
+
+            updateSummary(result.stats);
+            renderLogs(logList);
+            updatePagination();
+        } catch (error) {
+            console.error("Lỗi tải nhật ký hoạt động:", error);
+            tableBody.replaceChildren();
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 7;
+            cell.className = "text-center";
+            cell.style.cssText = "padding:20px;color:#ef4444";
+            cell.textContent = error.message || "Không thể tải nhật ký hoạt động.";
+            row.appendChild(cell);
+            tableBody.appendChild(row);
+            totalFiltered = 0;
+            updatePagination();
+        }
+    }
+
     function formatDate(dateStr) {
         if (!dateStr) return "-";
-        const d = new Date(dateStr);
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear();
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        const seconds = String(d.getSeconds()).padStart(2, '0');
+        const date = new Date(dateStr);
+        if (Number.isNaN(date.getTime())) return "-";
+        const day = String(date.getDate()).padStart(2, "0");
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        const seconds = String(date.getSeconds()).padStart(2, "0");
         return `${hours}:${minutes}:${seconds} - ${day}/${month}/${year}`;
     }
 
-    // 3. RENDER LOGS TABLE
-    function renderLogs(data) {
-        if (!tableBody) return;
-        tableBody.innerHTML = "";
+    function createCell(value, className) {
+        const cell = document.createElement("td");
+        if (className) cell.className = className;
+        cell.textContent = value == null || value === "" ? "-" : String(value);
+        return cell;
+    }
 
+    function createBadge(label, className) {
+        const badge = document.createElement("span");
+        badge.className = className;
+        badge.textContent = label;
+        return badge;
+    }
+
+    function renderLogs(data) {
+        tableBody.replaceChildren();
         if (data.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="6" class="text-center" style="padding: 20px; color: #94a3b8;">Không tìm thấy nhật ký hoạt động nào</td></tr>`;
+            const row = document.createElement("tr");
+            const cell = createCell("Không tìm thấy nhật ký hoạt động nào.");
+            cell.colSpan = 7;
+            cell.className = "text-center";
+            row.appendChild(cell);
+            tableBody.appendChild(row);
             return;
         }
 
+        const rolePresentation = {
+            ADMIN: ["ADMIN", "role-admin"],
+            LECTURER: ["GIẢNG VIÊN", "role-lecturer"],
+            STUDENT: ["SINH VIÊN", "role-student"],
+            GUEST: ["KHÁCH", "role-guest"]
+        };
+        const actionPresentation = {
+            CREATE: ["TẠO MỚI", "action-create"],
+            UPDATE: ["CẬP NHẬT", "action-update"],
+            DELETE: ["XÓA", "action-delete"],
+            AUTH: ["XÁC THỰC", "action-auth"],
+            READ: ["XEM", "action-read"],
+            OTHER: ["KHÁC", "action-other"]
+        };
+
         data.forEach(item => {
-            const tr = document.createElement("tr");
+            const row = document.createElement("tr");
+            const timeCell = document.createElement("td");
+            const clockIcon = document.createElement("i");
+            clockIcon.className = "fa-regular fa-clock";
+            clockIcon.style.cssText = "color:#94a3b8;margin-right:4px";
+            timeCell.append(clockIcon, document.createTextNode(formatDate(item.timestamp)));
 
-            // Role Badge
-            let roleBadge = "";
-            if (item.role === "ADMIN") roleBadge = `<span class="role-pill role-admin">ADMIN</span>`;
-            else if (item.role === "LECTURER") roleBadge = `<span class="role-pill role-lecturer">GIẢNG VIÊN</span>`;
-            else roleBadge = `<span class="role-pill role-student">SINH VIÊN</span>`;
+            const userCell = document.createElement("td");
+            userCell.className = "user-cell";
+            const name = document.createElement("span");
+            name.className = "user-name";
+            name.textContent = item.user;
+            const email = document.createElement("span");
+            email.className = "user-sub";
+            email.textContent = item.email;
+            userCell.append(name, email);
 
-            // Action Badge
-            let actionBadge = "";
-            if (item.actionType === "CREATE") actionBadge = `<span class="action-pill action-create">TẠO MỚI</span>`;
-            else if (item.actionType === "UPDATE") actionBadge = `<span class="action-pill action-update">CẬP NHẬT</span>`;
-            else if (item.actionType === "DELETE") actionBadge = `<span class="action-pill action-delete">XÓA</span>`;
-            else actionBadge = `<span class="action-pill action-auth">XÁC THỰC</span>`;
+            const [roleLabel, roleClass] = rolePresentation[item.role] || ["KHÁC", "role-guest"];
+            const roleCell = document.createElement("td");
+            roleCell.appendChild(createBadge(roleLabel, `role-pill ${roleClass}`));
 
-            tr.innerHTML = `
-                <td><i class="fa-regular fa-clock" style="color:#94a3b8; margin-right:4px;"></i> ${formatDate(item.timestamp)}</td>
-                <td>
-                    <div class="user-cell">
-                        <span class="user-name">${item.user}</span>
-                        <span class="user-sub">${item.email}</span>
-                    </div>
-                </td>
-                <td>${roleBadge}</td>
-                <td>${actionBadge}</td>
-                <td style="line-height: 1.4; color: #334155;">${item.actionText}</td>
-                <td class="text-center"><span class="ip-code">${item.ip}</span></td>
-            `;
-            tableBody.appendChild(tr);
+            const [actionLabel, actionClass] = actionPresentation[item.actionType] || actionPresentation.OTHER;
+            const actionCell = document.createElement("td");
+            actionCell.appendChild(createBadge(actionLabel, `action-pill ${actionClass}`));
+
+            const statusClass = Number(item.statusCode) >= 400 ? "status-error" : "status-success";
+            const statusCell = document.createElement("td");
+            statusCell.className = "text-center";
+            statusCell.appendChild(createBadge(
+                item.statusCode == null ? "-" : String(item.statusCode),
+                `status-pill ${statusClass}`
+            ));
+
+            const ipCell = document.createElement("td");
+            ipCell.className = "text-center";
+            ipCell.appendChild(createBadge(item.ip, "ip-code"));
+
+            row.append(
+                timeCell,
+                userCell,
+                roleCell,
+                actionCell,
+                createCell(item.actionText),
+                statusCell,
+                ipCell
+            );
+            tableBody.appendChild(row);
         });
     }
 
-    // 4. LỌC & TÌM KIẾM
-    function handleFilter() {
-        const query = searchInput?.value.toLowerCase().trim() || "";
-        const selectedRole = roleFilter?.value || "";
-        const selectedAction = actionTypeFilter?.value || "";
-
-        const filtered = logList.filter(l => {
-            const matchQuery = l.user.toLowerCase().includes(query) || 
-                               l.email.toLowerCase().includes(query) || 
-                               l.actionText.toLowerCase().includes(query);
-            const matchRole = selectedRole === "" || l.role === selectedRole;
-            const matchAction = selectedAction === "" || l.actionType === selectedAction;
-
-            return matchQuery && matchRole && matchAction;
-        });
-
-        renderLogs(filtered);
+    function reloadFromFirstPage() {
+        currentPage = 1;
+        fetchLogs();
     }
 
-    searchInput?.addEventListener("input", handleFilter);
-    roleFilter?.addEventListener("change", handleFilter);
-    actionTypeFilter?.addEventListener("change", handleFilter);
-
-    resetFilterBtn.onclick = () => {
+    searchInput?.addEventListener("input", () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(reloadFromFirstPage, 300);
+    });
+    roleFilter?.addEventListener("change", reloadFromFirstPage);
+    actionTypeFilter?.addEventListener("change", reloadFromFirstPage);
+    resetFilterBtn?.addEventListener("click", () => {
         if (searchInput) searchInput.value = "";
         if (roleFilter) roleFilter.value = "";
         if (actionTypeFilter) actionTypeFilter.value = "";
-        handleFilter();
-    };
+        reloadFromFirstPage();
+    });
+    previousPageBtn?.addEventListener("click", () => {
+        if (currentPage > 1) {
+            currentPage--;
+            fetchLogs();
+        }
+    });
+    nextPageBtn?.addEventListener("click", () => {
+        if (currentPage * pageSize < totalFiltered) {
+            currentPage++;
+            fetchLogs();
+        }
+    });
 
-    // 5. XUẤT CSV (MÔ PHỎNG)
-    exportLogBtn.onclick = () => {
-        showAppNotification("Đã hoàn tất xuất file Nhật ký hoạt động (system-audit-logs.csv)!");
-    };
+    exportLogBtn?.addEventListener("click", async () => {
+        const originalLabel = exportLogBtn.innerHTML;
+        exportLogBtn.disabled = true;
+        exportLogBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xuất...';
+        try {
+            const params = getFilterParams();
+            const response = await fetch(`${baseUrl}/activity-logs/export?${params}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) {
+                const result = await response.json().catch(() => ({}));
+                throw new Error(result.message || "Không thể xuất nhật ký hoạt động.");
+            }
 
-    // LOGOUT
+            const blob = await response.blob();
+            if (!blob.size) throw new Error("File nhật ký tải về đang trống.");
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "system-activity-logs.csv";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            window.showAppNotification?.("Đã xuất file nhật ký CSV thành công.");
+        } catch (error) {
+            console.error("Lỗi xuất nhật ký hoạt động:", error);
+            window.showAppNotification?.(error.message || "Không thể xuất nhật ký hoạt động.");
+        } finally {
+            exportLogBtn.disabled = false;
+            exportLogBtn.innerHTML = originalLabel;
+        }
+    });
+
     openLogoutBtn.onclick = () => logoutModal.style.display = "flex";
     cancelLogout.onclick = () => logoutModal.style.display = "none";
     confirmLogout.onclick = () => {
@@ -181,7 +301,5 @@ document.addEventListener("DOMContentLoaded", async () => {
         window.location.href = "../auth/index.html";
     };
 
-    // INIT
     await fetchLogs();
-    handleFilter();
 });

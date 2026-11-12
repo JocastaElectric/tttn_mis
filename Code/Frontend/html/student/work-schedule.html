@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="../../css/student/work-schedule.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
+    <link rel="stylesheet" href="../../css/common/student-logout-modal.css">
 </head>
 <body>
 
@@ -112,7 +113,7 @@
                         <div class="stat-icon purple"><i class="fa-solid fa-layer-group"></i></div>
                         <div class="stat-info">
                             <span class="stat-label">Tiến độ kỳ thực tập</span>
-                            <h3 id="statWeekProgress" class="stat-value">Tuần 01 <small>/ 15</small></h3>
+                            <h3 id="statWeekProgress" class="stat-value">Đang tải...</h3>
                         </div>
                     </div>
                     <div class="stat-card">
@@ -134,7 +135,7 @@
                         <div class="card-box todo-card">
                             <div class="card-header">
                                 <h3><i class="fa-solid fa-users text-blue"></i> Lịch họp / Báo cáo với Giảng viên</h3>
-                                <span class="badge-filter">Học kỳ II - 2025/2026</span>
+                                <span id="activeSemesterLabel" class="badge-filter">Học kỳ đang áp dụng</span>
                             </div>
 
                             <!-- Khối chứa danh sách lịch họp do JS render -->
@@ -146,34 +147,34 @@
                         <!-- 2. LỘ TRÌNH THỰC TẬP TỔNG THỂ -->
                         <div class="card-box margin-top-20">
                             <div class="card-header">
-                                <h3><i class="fa-solid fa-route text-blue"></i> Lộ trình thực tập tốt nghiệp (15 Tuần)</h3>
+                                <h3><i class="fa-solid fa-route text-blue"></i> Lộ trình thực tập tốt nghiệp (<span id="timelineTotalWeeks">--</span> Tuần)</h3>
                             </div>
                             <div class="timeline-container">
-                                <div class="timeline-item done">
+                                <div class="timeline-item" data-phase="0">
                                     <div class="t-dot"></div>
                                     <div class="t-text">
-                                        <h5>Tuần 1 - Tuần 3: Chọn đề tài & Viết đề cương</h5>
+                                        <h5>Chọn đề tài & Viết đề cương</h5>
                                         <p>Đăng ký đề tài, phân công nhóm và nộp đặc tả yêu cầu.</p>
                                     </div>
                                 </div>
-                                <div class="timeline-item active">
+                                <div class="timeline-item" data-phase="1">
                                     <div class="t-dot"></div>
                                     <div class="t-text">
-                                        <h5>Tuần 4 - Tuần 9: Triển khai ứng dụng & Báo cáo giữa kỳ</h5>
+                                        <h5>Triển khai ứng dụng & Báo cáo giữa kỳ</h5>
                                         <p>Xây dựng Database, Phát triển API, Giao diện frontend và họp đánh giá giữa kỳ.</p>
                                     </div>
                                 </div>
-                                <div class="timeline-item">
+                                <div class="timeline-item" data-phase="2">
                                     <div class="t-dot"></div>
                                     <div class="t-text">
-                                        <h5>Tuần 10 - Tuần 13: Hoàn thiện tính năng & Kiểm thử</h5>
+                                        <h5>Hoàn thiện tính năng & Kiểm thử</h5>
                                         <p>Căn chỉnh UI/UX, viết Unit Test, Fix bugs và đóng gói ứng dụng.</p>
                                     </div>
                                 </div>
-                                <div class="timeline-item">
+                                <div class="timeline-item" data-phase="3">
                                     <div class="t-dot"></div>
                                     <div class="t-text">
-                                        <h5>Tuần 14 - Tuần 15: Nộp quyển báo cáo & Bảo vệ TTTN</h5>
+                                        <h5>Nộp quyển báo cáo & Bảo vệ TTTN</h5>
                                         <p>Hoàn thiện báo cáo tổng kết, chuẩn bị slide trình bày và phản biện trước Hội đồng.</p>
                                     </div>
                                 </div>
@@ -283,14 +284,15 @@
         <div class="modal-box small">
             <div class="modal-icon"><i class="fa-solid fa-right-from-bracket"></i></div>
             <h3>Xác nhận đăng xuất</h3>
-            <p>Bạn có chắc chắn muốn thoát khỏi phiên làm việc không?</p>
+            <p>Bạn có chắc chắn muốn thoát khỏi phiên làm việc này không?</p>
             <div class="modal-actions">
-                <button id="cancelLogoutBtn" class="btn-cancel">Hủy bỏ</button>
-                <button id="confirmLogoutBtn" class="btn-confirm">Đăng xuất</button>
+                <button type="button" id="cancelLogoutBtn" class="btn-cancel">Hủy bỏ</button>
+                <button type="button" id="confirmLogoutBtn" class="btn-confirm">Đăng xuất</button>
             </div>
         </div>
     </div>
 
+    <script src="../../js/config.js"></script>
     <script src="../../js/common/notif-badge.js"></script>
     <script src="../../js/student/work-schedule.js"></script>
     <script src="../../js/common/app-notifications.js"></script>

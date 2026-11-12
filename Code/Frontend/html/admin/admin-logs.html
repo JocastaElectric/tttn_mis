@@ -49,6 +49,12 @@
                 <div class="menu-heading">QUẢN LÝ NGHIỆP VỤ</div>
                 <ul class="menu-list">
                     <li class="menu-item">
+                        <a href="admin-semesters.html">
+                            <i class="fa-solid fa-calendar-days"></i>
+                            <span>Học kỳ & đăng ký</span>
+                        </a>
+                    </li>
+                    <li class="menu-item">
                         <a href="admin-teams.html">
                             <i class="fa-solid fa-users-rectangle"></i>
                             <span>Nhóm & Phân công</span>
@@ -154,6 +160,13 @@
                             <strong class="summary-value" id="studentLogs">0</strong>
                         </div>
                     </div>
+                    <div class="summary-card">
+                        <div class="summary-icon gray"><i class="fa-solid fa-user-clock"></i></div>
+                        <div class="summary-info">
+                            <span class="summary-label">Thao tác Khách</span>
+                            <strong class="summary-value" id="guestLogs">0</strong>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- BẢNG DỮ LIỆU & BỘ LỌC -->
@@ -161,7 +174,7 @@
                     <div class="filter-bar">
                         <div class="search-input-group">
                             <i class="fa-solid fa-magnifying-glass"></i>
-                            <input type="text" id="searchInput" placeholder="Tìm theo Tên người thực hiện, Hành động...">
+                            <input type="text" id="searchInput" maxlength="100" placeholder="Tìm theo người thực hiện, mã, hành động...">
                         </div>
 
                         <div class="filter-controls">
@@ -170,6 +183,7 @@
                                 <option value="ADMIN">Admin</option>
                                 <option value="LECTURER">Giảng viên</option>
                                 <option value="STUDENT">Sinh viên</option>
+                                <option value="GUEST">Khách</option>
                             </select>
 
                             <select id="actionTypeFilter" class="select-box">
@@ -177,7 +191,9 @@
                                 <option value="CREATE">Tạo mới / Thêm</option>
                                 <option value="UPDATE">Cập nhật / Sửa</option>
                                 <option value="DELETE">Xóa dữ liệu</option>
+                                <option value="READ">Xem dữ liệu</option>
                                 <option value="AUTH">Đăng nhập / Đăng xuất</option>
+                                <option value="OTHER">Khác</option>
                             </select>
 
                             <button id="resetFilterBtn" class="btn btn-outline"><i class="fa-solid fa-rotate-left"></i> Đặt lại</button>
@@ -193,6 +209,7 @@
                                     <th width="120">Vai Trò</th>
                                     <th width="120">Thao Tác</th>
                                     <th>Nội Dung Chi Tiết Hành Động</th>
+                                    <th width="90" class="text-center">Mã HTTP</th>
                                     <th width="130" class="text-center">Địa Chỉ IP</th>
                                 </tr>
                             </thead>
@@ -200,6 +217,13 @@
                                 <!-- JS render -->
                             </tbody>
                         </table>
+                    </div>
+                    <div class="logs-pagination">
+                        <span id="logsPageInfo">Đang tải nhật ký...</span>
+                        <div class="logs-pagination-actions">
+                            <button id="previousLogsPage" class="btn btn-outline" type="button" disabled>Trước</button>
+                            <button id="nextLogsPage" class="btn btn-outline" type="button" disabled>Tiếp</button>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -219,6 +243,7 @@
         </div>
     </div>
 
+    <script src="../../js/config.js"></script>
     <script src="../../js/admin/admin-logs.js"></script>
     <script src="../../js/admin/admin-sidebar.js"></script>
     <script src="../../js/common/app-notifications.js"></script>

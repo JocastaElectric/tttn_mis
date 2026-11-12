@@ -151,7 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             // Gửi request tới Backend API (Đổi cổng thành cổng thực tế của bạn sau này)
-            const response = await fetch("http://localhost:5000/api/auth/login", {
+            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
@@ -251,7 +251,7 @@ document.addEventListener("DOMContentLoaded", () => {
             fpSubmitBtn.innerHTML = "<span>Đang xử lý...</span>";
 
             try {
-                const response = await fetch("http://localhost:5000/api/auth/forgot-password", {
+                const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/forgot-password", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ user_code, email })

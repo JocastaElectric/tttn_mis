@@ -383,6 +383,25 @@ body {
 .submission-status-table .submission-row-overdue td { background: #fee2e2; color: #991b1b; }
 .submission-status-table .submission-row-file th,
 .submission-status-table .submission-row-file td { background: #ededed; }
+.milestone-submission-history {
+    margin-top: 18px;
+    padding: 14px;
+    border: 1px solid #dbe5f1;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+.milestone-submission-history h4 { margin: 0 0 10px; color: #334155; font-size: 14px; }
+.milestone-submission-history h4 i { margin-right: 6px; color: #2563eb; }
+.milestone-submission-history ol { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.milestone-submission-history li { display: grid; gap: 5px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.history-submission-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: #334155; font-size: 12px; }
+.history-status { padding: 3px 8px; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: 10px; font-weight: 700; }
+.history-status.approved { background: #dcfce7; color: #15803d; }
+.history-status.revision_requested { background: #fff7ed; color: #c2410c; }
+.history-status.draft { background: #f1f5f9; color: #475569; }
+.milestone-submission-history li > small { color: #64748b; font-size: 11px; }
+.milestone-submission-history li > a { overflow-wrap: anywhere; color: #2563eb; font-size: 12px; font-weight: 600; }
+.milestone-submission-history li > p { margin: 0; color: #475569; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
 .submission-file-link { color: #243b7a; text-decoration: none; overflow-wrap: anywhere; }
 .submission-file-link:hover { text-decoration: underline; }
 .submission-file-date { margin-left: 6px; white-space: nowrap; }

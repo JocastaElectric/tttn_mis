@@ -35,6 +35,28 @@ const submissionSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    attempt: {
+        type: Number,
+        min: 1
+    },
+    review_status: {
+        type: String,
+        enum: ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'REVISION_REQUESTED'],
+        default: 'PENDING_REVIEW'
+    },
+    feedback: {
+        type: String,
+        default: '',
+        maxlength: 2000
+    },
+    reviewed_by: {
+        type: String,
+        default: null
+    },
+    reviewed_at: {
+        type: Date,
+        default: null
+    },
     submitted_at: { 
         type: Date, 
         default: Date.now 

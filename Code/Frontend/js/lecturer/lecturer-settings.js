@@ -109,11 +109,13 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             try {
-                const response = await fetch("http://localhost:5000/api/auth/change-password", {
+                const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/change-password", {
                     method: "PUT",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${auth.token}`
+                    },
                     body: JSON.stringify({
-                        user_code: user.user_code,
                         currentPassword: oldPass,
                         newPassword: newPass
                     })
@@ -139,12 +141,4 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // 4. ĐĂNG XUẤT
-    const logoutBtn = document.getElementById("logoutBtn");
-    if (logoutBtn) {
-        logoutBtn.addEventListener("click", () => {
-            localStorage.removeItem("user");
-            window.location.href = "../auth/index.html";
-        });
-    }
 });

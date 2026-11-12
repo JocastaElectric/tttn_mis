@@ -144,7 +144,7 @@ body {
 /* SUMMARY GRID */
 .summary-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 16px;
 }
 
@@ -172,6 +172,7 @@ body {
 .summary-icon.green { background-color: #f0fdf4; color: #16a34a; }
 .summary-icon.purple { background-color: #faf5ff; color: #9333ea; }
 .summary-icon.orange { background-color: #fff7ed; color: #ea580c; }
+.summary-icon.gray { background-color: #f1f5f9; color: #64748b; }
 
 .summary-info { display: flex; flex-direction: column; }
 .summary-label { font-size: 12px; color: #64748b; }
@@ -233,14 +234,33 @@ body {
 .role-admin { background-color: #eff6ff; color: #2563eb; }
 .role-lecturer { background-color: #faf5ff; color: #9333ea; }
 .role-student { background-color: #fff7ed; color: #ea580c; }
+.role-guest { background-color: #f1f5f9; color: #64748b; }
 
 .action-pill { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-block; }
 .action-create { background-color: #f0fdf4; color: #16a34a; }
 .action-update { background-color: #eff6ff; color: #2563eb; }
 .action-delete { background-color: #fef2f2; color: #ef4444; }
 .action-auth { background-color: #f1f5f9; color: #475569; }
+.action-read { background-color: #ecfeff; color: #0e7490; }
+.action-other { background-color: #f8fafc; color: #64748b; }
+.status-pill { padding: 3px 7px; border-radius: 5px; font-size: 11px; font-weight: 700; }
+.status-success { background: #f0fdf4; color: #15803d; }
+.status-error { background: #fef2f2; color: #b91c1c; }
 
 .ip-code { font-family: monospace; font-size: 12px; color: #64748b; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
+
+.logs-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.logs-pagination-actions { display: flex; gap: 8px; }
+.logs-pagination button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* MODALS */
 .modal-overlay {
@@ -252,3 +272,14 @@ body {
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; }
 .modal-foot.center { justify-content: center; }
 .modal-icon-red { font-size: 32px; color: #ef4444; margin-bottom: 8px; }
+
+@media (max-width: 760px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .filter-bar { align-items: stretch; flex-direction: column; }
+    .search-input-group { width: 100%; }
+    .filter-controls { flex-wrap: wrap; }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+    .summary-grid { grid-template-columns: repeat(3, 1fr); }
+}

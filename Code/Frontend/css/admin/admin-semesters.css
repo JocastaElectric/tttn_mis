@@ -1,0 +1,760 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    color: #142f63;
+}
+
+button,
+input {
+    font: inherit;
+}
+
+.semester-page {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    min-height: calc(100vh - 64px);
+    margin: 0;
+    padding: 24px;
+    overflow: hidden;
+    background:
+        radial-gradient(ellipse at 68% 7%, rgba(198, 219, 255, 0.3), transparent 34%),
+        linear-gradient(135deg, #f8faff 0%, #edf3ff 55%, #e8f0ff 100%);
+}
+
+.page-header {
+    position: relative;
+    min-height: 154px;
+    margin: 0 0 16px;
+    padding: 20px 24px 18px;
+    overflow: hidden;
+    border: 1px solid rgba(207, 222, 250, 0.9);
+    border-radius: 14px;
+    background:
+        linear-gradient(90deg, rgba(241, 246, 255, 0.99) 0%, rgba(240, 246, 255, 0.95) 38%, rgba(237, 245, 255, 0.34) 73%, rgba(232, 243, 255, 0.25) 100%),
+        url("../../assets/images/campus-bg.png") right 42% / cover no-repeat;
+}
+
+.page-header::after {
+    position: absolute;
+    right: -44px;
+    bottom: -132px;
+    z-index: -1;
+    width: 420px;
+    height: 210px;
+    border-radius: 50%;
+    background: rgba(194, 216, 255, 0.34);
+    content: "";
+}
+
+.breadcrumbs {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 23px;
+    color: #61789f;
+    font-size: 12px;
+}
+
+.back-link {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    color: #526d9c;
+    text-decoration: none;
+}
+
+.back-link i {
+    color: #2563ce;
+}
+
+.back-link:hover {
+    color: #1558cf;
+}
+
+.breadcrumb-divider {
+    color: #9aacc8;
+    font-size: 10px;
+}
+
+.hero-copy {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+}
+
+.hero-icon {
+    display: grid;
+    width: 54px;
+    height: 54px;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #2161ce;
+    font-size: 42px;
+}
+
+h1,
+h2,
+h3,
+p {
+    margin-top: 0;
+}
+
+h1 {
+    margin-bottom: 6px;
+    color: #102e65;
+    font-size: clamp(26px, 3.2vw, 36px);
+    font-weight: 750;
+    letter-spacing: -0.8px;
+}
+
+.intro {
+    margin-bottom: 0;
+    color: #5d7297;
+    font-size: 14px;
+}
+
+.hero-underline {
+    position: absolute;
+    bottom: 0;
+    left: 87px;
+    width: 47px;
+    height: 3px;
+    border-radius: 3px;
+    background: #3287ff;
+}
+
+.page-message {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 18px;
+    padding: 11px 15px;
+    border: 1px solid #bfd4fb;
+    border-radius: 10px;
+    background: #edf5ff;
+    color: #2456a0;
+    font-size: 13px;
+}
+
+.page-message[hidden] {
+    display: none;
+}
+
+.page-message.error {
+    border-color: #f0c4c4;
+    background: #fff0f0;
+    color: #bd2929;
+}
+
+.message-close {
+    margin-left: auto;
+    padding: 2px 4px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.content-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
+    gap: 16px;
+    align-items: stretch;
+}
+
+.panel {
+    position: relative;
+    min-width: 0;
+    min-height: 434px;
+    overflow: hidden;
+    border: 1px solid #cadbfa;
+    border-radius: 17px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 5px 13px rgba(35, 83, 163, 0.1);
+}
+
+.semester-form {
+    padding: 0;
+}
+
+.panel-banner {
+    position: relative;
+    display: flex;
+    min-height: 70px;
+    gap: 13px;
+    align-items: center;
+    padding: 13px 18px;
+    overflow: hidden;
+    background: linear-gradient(112deg, #2161ca 0%, #3786f2 100%);
+    color: #fff;
+}
+
+.heading-icon {
+    z-index: 1;
+    display: grid;
+    width: 46px;
+    height: 46px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-size: 22px;
+}
+
+.panel-heading-copy {
+    z-index: 1;
+}
+
+.panel-heading-copy h2 {
+    margin-bottom: 3px;
+    color: inherit;
+    font-size: 17px;
+    font-weight: 720;
+}
+
+.panel-heading-copy p {
+    margin-bottom: 0;
+    color: inherit;
+    font-size: 11px;
+    opacity: 0.88;
+}
+
+.banner-decoration {
+    position: absolute;
+    right: 15px;
+    bottom: -20px;
+    color: rgba(255, 255, 255, 0.14);
+    font-size: 72px;
+    transform: rotate(12deg);
+}
+
+.form-fields {
+    position: relative;
+    z-index: 1;
+    padding: 17px 22px 22px;
+}
+
+.semester-form label:not(.checkbox-row) {
+    display: block;
+    margin: 0 0 6px;
+    color: #183664;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.semester-form label:not(.checkbox-row)::before {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 7px;
+    border-radius: 50%;
+    background: #65a6ff;
+    content: "";
+}
+
+.semester-form > input[type="hidden"] {
+    display: none;
+}
+
+.input-with-icon {
+    position: relative;
+    margin-bottom: 14px;
+}
+
+.input-with-icon > i {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    z-index: 1;
+    color: #6d82a6;
+    font-size: 14px;
+    pointer-events: none;
+    transform: translateY(-50%);
+}
+
+.semester-form input[type="text"],
+.semester-form input[type="date"],
+.semester-form input[type="datetime-local"],
+.semester-form input[type="number"] {
+    width: 100%;
+    min-width: 0;
+    min-height: 39px;
+    padding: 8px 11px;
+    border: 1px solid #cfdbef;
+    border-radius: 8px;
+    outline: none;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 1px 3px rgba(22, 57, 110, 0.06);
+    color: #213b66;
+    font-size: 13px;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.semester-form .input-with-icon input {
+    padding-left: 37px;
+}
+
+.semester-form .input-with-icon input[type="datetime-local"] {
+    padding-right: 34px;
+}
+
+.date-grid > div {
+    min-width: 0;
+}
+
+.semester-form input::placeholder {
+    color: #8192ad;
+}
+
+.semester-form input:focus {
+    border-color: #4384f5;
+    box-shadow: 0 0 0 3px rgba(67, 132, 245, 0.13);
+}
+
+.date-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.checkbox-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 3px 0 15px;
+    color: #385273;
+    font-size: 12px;
+}
+
+.checkbox-row input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: #246dec;
+}
+
+.form-actions,
+.semester-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 3px;
+}
+
+.primary-button,
+.secondary-button,
+.action-button {
+    display: inline-flex;
+    min-height: 38px;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.primary-button:hover,
+.view-all-button:hover,
+.action-button:hover {
+    transform: translateY(-1px);
+}
+
+.primary-button {
+    min-width: 130px;
+    border-radius: 22px;
+    background: linear-gradient(110deg, #155ce9, #3786f2);
+    box-shadow: 0 5px 11px rgba(31, 101, 225, 0.2);
+    color: #fff;
+}
+
+.primary-button:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+.secondary-button,
+.action-button {
+    border-color: #cddbf1;
+    background: rgba(255, 255, 255, 0.78);
+    color: #526b91;
+}
+
+.action-button.activate {
+    border-color: #ccebd9;
+    color: #16834b;
+}
+
+.action-button.delete {
+    border-color: #f4d0d0;
+    color: #c53b3b;
+}
+
+.semester-list-panel {
+    display: flex;
+    flex-direction: column;
+    padding: 17px 19px 30px;
+}
+
+.list-heading {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #edf2fb;
+}
+
+.panel-heading {
+    display: flex;
+    min-width: 0;
+    gap: 12px;
+    align-items: center;
+}
+
+.list-heading .heading-icon {
+    width: 46px;
+    height: 46px;
+    border: 0;
+    background: #e5efff;
+    color: #286bd7;
+}
+
+.list-heading .panel-heading-copy h2 {
+    color: #183664;
+}
+
+.list-heading .panel-heading-copy p {
+    color: #7486a4;
+    opacity: 1;
+}
+
+.view-all-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    min-height: 34px;
+    gap: 8px;
+    align-items: center;
+    padding: 7px 13px;
+    border: 0;
+    border-radius: 20px;
+    background: #e7f0ff;
+    color: #145cd7;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.view-all-button:hover {
+    background: #dceaff;
+}
+
+.semester-list {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    flex: 1;
+    align-content: start;
+    gap: 10px;
+    padding: 14px 0 4px;
+}
+
+.semester-item {
+    padding: 14px;
+    border: 1px solid #e0e9f8;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.84);
+    box-shadow: 0 3px 10px rgba(40, 75, 130, 0.04);
+}
+
+.semester-item.active {
+    border-color: #abcaff;
+    background: #f5f9ff;
+}
+
+.semester-item-header {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.semester-item h3 {
+    margin: 0;
+    color: #1b396b;
+    font-size: 14px;
+}
+
+.semester-dates {
+    display: grid;
+    gap: 5px;
+    color: #647995;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.status-badge {
+    padding: 5px 9px;
+    border-radius: 99px;
+    background: #edf1f6;
+    color: #68778c;
+    font-size: 9px;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.status-badge.active {
+    background: #e3f7ed;
+    color: #16834b;
+}
+
+.semester-actions {
+    margin-top: 12px;
+}
+
+.action-button {
+    min-height: 31px;
+    padding: 6px 10px;
+    font-size: 11px;
+}
+
+.empty-state {
+    display: flex;
+    min-height: 230px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    color: #173764;
+    text-align: center;
+}
+
+.empty-illustration {
+    position: relative;
+    display: grid;
+    width: 230px;
+    height: 142px;
+    place-items: center;
+    margin-bottom: 12px;
+    color: #2672e8;
+}
+
+.empty-illustration::before {
+    position: absolute;
+    top: 38px;
+    width: 220px;
+    height: 82px;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 22% 55%, #dceaff 0 27px, transparent 28px),
+        radial-gradient(circle at 39% 37%, #e5efff 0 38px, transparent 39px),
+        radial-gradient(circle at 60% 41%, #e0ecff 0 35px, transparent 36px),
+        radial-gradient(circle at 78% 57%, #dceaff 0 27px, transparent 28px);
+    content: "";
+}
+
+.empty-calendar {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: 98px;
+    height: 90px;
+    place-items: center;
+    border: 6px solid #347be9;
+    border-top: 15px solid #2164d7;
+    border-radius: 13px;
+    background: #f9fbff;
+    box-shadow: 0 8px 18px rgba(31, 91, 187, 0.16);
+    transform: rotate(-1deg);
+}
+
+.empty-calendar::before,
+.empty-calendar::after {
+    position: absolute;
+    top: -22px;
+    width: 8px;
+    height: 19px;
+    border: 4px solid #3c82ed;
+    border-radius: 8px;
+    content: "";
+}
+
+.empty-calendar::before {
+    left: 18px;
+}
+
+.empty-calendar::after {
+    right: 18px;
+}
+
+.empty-calendar i {
+    color: #73a4f5;
+    font-size: 48px;
+}
+
+.empty-clock {
+    position: absolute;
+    right: 42px;
+    bottom: 15px;
+    z-index: 2;
+    display: grid;
+    width: 54px;
+    height: 54px;
+    place-items: center;
+    border: 5px solid #236be2;
+    border-radius: 50%;
+    background: #f7faff;
+    color: #236be2;
+    font-size: 24px;
+}
+
+.empty-state strong {
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+.empty-state > span {
+    color: #7385a4;
+    font-size: 12px;
+}
+
+.empty-create-button {
+    display: inline-flex;
+    min-height: 35px;
+    gap: 8px;
+    align-items: center;
+    margin-top: 15px;
+    padding: 7px 18px;
+    border: 0;
+    border-radius: 20px;
+    background: #e4efff;
+    color: #175fda;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.panel-waves {
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 76px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.panel-waves span {
+    position: absolute;
+    right: -8%;
+    bottom: -49px;
+    left: -8%;
+    height: 100px;
+    border-radius: 50% 50% 0 0;
+    background: rgba(208, 225, 255, 0.34);
+    transform: rotate(-2deg);
+}
+
+.panel-waves span + span {
+    bottom: -63px;
+    background: rgba(225, 236, 255, 0.7);
+    transform: rotate(3deg);
+}
+
+@media (min-width: 1200px) {
+    .content-grid {
+        min-height: 434px;
+    }
+
+    .semester-list-panel {
+        min-height: 434px;
+    }
+}
+
+@media (max-width: 760px) {
+    .semester-page {
+        min-height: calc(100vh - 64px);
+        padding: 18px;
+    }
+
+    .page-header {
+        min-height: 148px;
+        margin-bottom: 14px;
+        padding: 16px;
+        background-position: 64% center;
+    }
+
+    .content-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .panel {
+        min-height: 0;
+    }
+
+    .semester-list-panel {
+        min-height: 360px;
+    }
+}
+
+@media (max-width: 480px) {
+    .semester-page {
+        padding-right: 12px;
+        padding-left: 12px;
+    }
+
+    .page-header {
+        padding-right: 12px;
+        padding-left: 12px;
+    }
+
+    .breadcrumbs {
+        margin-bottom: 18px;
+    }
+
+    .hero-copy {
+        gap: 10px;
+    }
+
+    .hero-icon {
+        width: 42px;
+        font-size: 34px;
+    }
+
+    .intro {
+        max-width: 300px;
+        font-size: 12px;
+    }
+
+    .form-fields {
+        padding-right: 15px;
+        padding-left: 15px;
+    }
+
+    .date-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+
+    .list-heading {
+        align-items: flex-start;
+    }
+
+    .view-all-button {
+        padding-right: 9px;
+        padding-left: 9px;
+        font-size: 10px;
+    }
+}

@@ -3,9 +3,14 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const Submission = require('../models/Submission');
 const authMiddleware = require('../middlewares/authMiddleware');
 const { uploadMilestone } = require('../controllers/topicController');
+const submissionController = require('../controllers/submissionController');
+
+const requireSubmissionRole = (...roles) => (req, res, next) => {
+    if (roles.includes(String(req.user?.role || '').toUpperCase())) return next();
+    return res.status(403).json({ success: false, message: 'Bạn không có quyền thực hiện thao tác này.' });
+};
 
 const requireStudentRole = (req, res, next) => {
     if (String(req.user?.role || '').toUpperCase() === 'STUDENT') return next();
@@ -31,20 +36,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage, defParamCharset: 'utf8' });
 
-// API GET: /api/submissions/topic/:topic_id
-router.get('/topic/:topic_id', async (req, res) => {
-    try {
-        const submissions = await Submission.find({ topic_id: req.params.topic_id, is_draft: { $ne: true } })
-            .sort({ milestone: 1, submitted_at: -1 })
-            .lean();
-
-        return res.status(200).json({ success: true, data: submissions });
-    } catch (error) {
-        console.error("Lỗi khi lấy bài nộp theo đề tài:", error);
-        return res.status(500).json({ success: false, message: 'Lỗi máy chủ: ' + error.message });
-    }
-});
-
+router.get('/topic/:topic_id', authMiddleware, requireSubmissionRole('STUDENT', 'LECTURER'), submissionController.listTopicSubmissions);
+router.get('/file/:filename', authMiddleware, requireSubmissionRole('STUDENT', 'LECTURER'), submissionController.downloadTopicSubmissionFile);
+router.patch('/topic/:topic_id/:submissionId/review', authMiddleware, requireSubmissionRole('LECTURER'), submissionController.reviewSubmission);
 router.post('/upload', authMiddleware, requireStudentRole, upload.single('file'), uploadMilestone);
 
 module.exports = router;

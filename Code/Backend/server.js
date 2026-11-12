@@ -1,7 +1,8 @@
 const express = require('express');
 const dotenv = require('dotenv');
-const cors = require('cors');
+const path = require('path');
 const connectDB = require('./config/db.js');
+const { createCorsMiddleware } = require('./config/cors');
 
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
@@ -11,20 +12,35 @@ const scheduleRoutes = require('./routes/scheduleRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const activityLogRoutes = require('./routes/activityLogRoutes');
+const ActivityLog = require('./models/ActivityLog');
 const documentRoutes = require('./routes/documentRoutes');
 const milestoneRoutes = require('./routes/milestoneRoutes');
+const semesterRoutes = require('./routes/semesterRoutes');
 const activityLogger = require('./middlewares/activityLogger');
+const authMiddleware = require('./middlewares/authMiddleware');
+const submissionController = require('./controllers/submissionController');
 const groupController = require('./controllers/groupController');
 const Milestone = require('./models/Milestone');
+const Topic = require('./models/Topic');
+const Semester = require('./models/Semester');
+const Notification = require('./models/Notification');
+const {
+	startMilestoneReminderJob,
+	startSemesterRegistrationNotifier
+} = require('./services/notificationService');
 
 dotenv.config();
 
 const app = express();
 
-app.use(cors());
+app.use(createCorsMiddleware());
 app.use(express.json());
 app.use(activityLogger);
-app.use('/uploads', express.static('uploads'));
+app.get('/uploads/:filename', authMiddleware, (req, res, next) => {
+	if (['STUDENT', 'LECTURER'].includes(String(req.user?.role || '').toUpperCase())) return next();
+	return res.status(403).json({ success: false, message: 'Bạn không có quyền tải tệp báo cáo.' });
+}, submissionController.downloadTopicSubmissionFile);
+app.use('/uploads/documents', express.static(path.join(__dirname, 'uploads', 'documents')));
 
 // Routes API
 app.use('/api/auth', authRoutes);
@@ -39,13 +55,24 @@ app.use('/api/v1/lecturer/dashboard', dashboardRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/milestones', milestoneRoutes);
+app.use('/api/semesters', semesterRoutes);
 
 app.get('/api/groups/lecturer/:lecturerCode', groupController.getGroupsByLecturer);
 
 const PORT = process.env.PORT || 5000;
 connectDB()
-	.then(() => Milestone.syncIndexes())
-	.then(() => app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`)))
+	.then(() => Promise.all([
+		Milestone.syncIndexes(),
+		Topic.init(),
+		Semester.init(),
+		Notification.init(),
+		ActivityLog.init()
+	]))
+	.then(() => {
+		startMilestoneReminderJob();
+		startSemesterRegistrationNotifier();
+		app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+	})
 	.catch(error => {
 		console.error(`❌ Không thể khởi động máy chủ: ${error.message}`);
 		process.exit(1);

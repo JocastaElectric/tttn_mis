@@ -12,6 +12,51 @@ body {
     min-height: 100vh;
 }
 
+.registration-window-notice {
+    margin: 0 0 16px;
+    padding: 12px 15px;
+    border: 1px solid #cfe0fb;
+    border-radius: 9px;
+    background: #eff6ff;
+    color: #234f8c;
+    font-size: 14px;
+}
+
+.registration-window-notice.is-open {
+    border-color: #b7e7cb;
+    background: #f0fbf4;
+    color: #285d3b;
+}
+
+.registration-window-status {
+    display: inline-block;
+    margin-right: 4px;
+    padding: 3px 8px;
+    border: 1px solid #a7e3bd;
+    border-radius: 999px;
+    background: #d9f8e4;
+    color: #08783e;
+    font-weight: 800;
+}
+
+.registration-window-notice.is-upcoming {
+    border-color: #f2d27b;
+    background: #fff8df;
+    color: #805b0b;
+}
+
+.registration-window-status.is-upcoming {
+    border-color: #e9c34e;
+    background: #ffedaa;
+    color: #765000;
+}
+
+.registration-window-notice.is-closed {
+    border-color: #f2d5a5;
+    background: #fff8e9;
+    color: #825a15;
+}
+
 /* APP LAYOUT CHÍNH */
 .app-layout {
     display: flex;

@@ -17,6 +17,7 @@ const requireAdminRole = (req, res, next) => {
     });
 };
 
+router.get('/export', authMiddleware, requireAdminRole, activityLogController.exportActivityLogs);
 router.get('/', authMiddleware, requireAdminRole, activityLogController.getActivityLogs);
 
 module.exports = router;

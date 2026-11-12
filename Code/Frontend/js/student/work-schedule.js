@@ -1,10 +1,6 @@
 // Biến lưu thông tin đề tài & giảng viên thu thập từ API
 let currentScheduleTopicInfo = null;
 
-// CẤU HÌNH NGÀY BẮT ĐẦU ĐỢT THỰC TẬP
-// Thay đổi ngày này theo đúng ngày bắt đầu học kỳ thực tập của trường bạn
-const INTERNSHIP_START_DATE = "2026-06-15"; 
-
 function getAuthForRole(role) {
     const activeSession = sessionStorage.getItem("activeAuth");
     if (activeSession) {
@@ -54,7 +50,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     async function loadAvailabilitySlots() {
         if (!availabilitySelect || !currentScheduleTopicInfo?.lecturer_code) return;
         try {
-            const response = await fetch(`http://localhost:5000/api/schedule/availability/${encodeURIComponent(currentScheduleTopicInfo.lecturer_code)}`, {
+            const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/availability/${encodeURIComponent(currentScheduleTopicInfo.lecturer_code)}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             const result = await response.json();
@@ -128,7 +124,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
 
             try {
-                const response = await fetch("http://localhost:5000/api/schedule/meetings/create", {
+                const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/schedule/meetings/create", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -184,7 +180,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         try {
-            const response = await fetch("http://localhost:5000/api/schedule/todos/add", {
+            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/schedule/todos/add", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -257,34 +253,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 // =========================================================
-// HÀM TÍNH TUẦN THỰC TẬP TỰ ĐỘNG THEO THỜI GIAN THỰC
-// =========================================================
-function calculateCurrentWeek(startDateStr, totalWeeks = 15) {
-    const startDate = new Date(startDateStr);
-    const today = new Date();
-
-    // Đặt giờ về 00:00:00 để so sánh chính xác theo ngày
-    startDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-
-    // Nếu ngày hiện tại trước ngày bắt đầu
-    if (today < startDate) return 1;
-
-    const diffTime = Math.abs(today - startDate);
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    const calculatedWeek = Math.floor(diffDays / 7) + 1;
-
-    if (calculatedWeek > totalWeeks) return totalWeeks;
-    return calculatedWeek;
-}
-
-// =========================================================
 // HÀM CALL API LẤY TOÀN BỘ DỮ LIỆU ĐỂ RENDER
 // =========================================================
 async function loadScheduleData(studentCode) {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const res = await fetch(`http://localhost:5000/api/schedule/my-schedule/${studentCode}`, {
+        const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/my-schedule/${studentCode}`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -471,18 +445,70 @@ function renderTopStats(stats) {
     if (!stats) return;
     const upcomingEl = document.getElementById("statUpcomingMeetings");
     const weekProgressEl = document.getElementById("statWeekProgress");
+    const semesterLabel = document.getElementById("activeSemesterLabel");
+    const timelineTotalWeeks = document.getElementById("timelineTotalWeeks");
 
     if (upcomingEl) {
         upcomingEl.textContent = `${String(stats.upcoming_meetings || 0).padStart(2, '0')} buổi`;
     }
+    const configuredWeeks = Number(stats.total_weeks);
+    const totalWeeks = Number.isInteger(configuredWeeks) && configuredWeeks > 0 ? configuredWeeks : 0;
+    const configuredCurrentWeek = Number(stats.current_week);
+    const currentWeek = totalWeeks
+        ? Math.min(totalWeeks, Math.max(1, Number.isInteger(configuredCurrentWeek) ? configuredCurrentWeek : 1))
+        : 0;
     if (weekProgressEl) {
-        const totalWeeks = stats.total_weeks || 15;
-        // Tính số tuần thực tế dựa trên ngày khởi tạo INTERNSHIP_START_DATE
-        const computedWeek = calculateCurrentWeek(INTERNSHIP_START_DATE, totalWeeks);
-        const currentWeekStr = String(computedWeek).padStart(2, '0');
-
-        weekProgressEl.innerHTML = `Tuần ${currentWeekStr} <small style="font-size: 14px; color: #64748b; font-weight: normal;">/ ${totalWeeks}</small>`;
+        if (totalWeeks) {
+            const currentWeekLabel = document.createTextNode(`Tuần ${String(currentWeek).padStart(2, "0")} `);
+            const totalLabel = document.createElement("small");
+            totalLabel.style.cssText = "font-size: 14px; color: #64748b; font-weight: normal;";
+            totalLabel.textContent = `/ ${totalWeeks}`;
+            weekProgressEl.replaceChildren(currentWeekLabel, totalLabel);
+        } else {
+            weekProgressEl.textContent = "Chưa cấu hình";
+        }
     }
+    if (semesterLabel) {
+        semesterLabel.textContent = stats.semester_name || "Chưa có học kỳ áp dụng";
+    }
+    if (timelineTotalWeeks) timelineTotalWeeks.textContent = totalWeeks || "--";
+    renderInternshipTimeline(currentWeek, totalWeeks);
+}
+
+function renderInternshipTimeline(currentWeek, totalWeeks) {
+    const timelineItems = [...document.querySelectorAll(".timeline-item[data-phase]")];
+    if (!totalWeeks) {
+        timelineItems.forEach(item => { item.hidden = true; });
+        return;
+    }
+
+    const phaseCount = Math.min(timelineItems.length, totalWeeks);
+    const endRatios = [0.2, 0.6, 13 / 15];
+    let previousEnd = 0;
+
+    timelineItems.forEach((item, index) => {
+        if (index >= phaseCount) {
+            item.hidden = true;
+            return;
+        }
+
+        item.hidden = false;
+        const endWeek = index < phaseCount - 1
+            ? Math.min(totalWeeks - (phaseCount - index - 1), Math.max(previousEnd + 1, Math.round(totalWeeks * endRatios[index])))
+            : totalWeeks;
+        const startWeek = previousEnd + 1;
+        const weekRange = startWeek === endWeek ? `Tuần ${startWeek}` : `Tuần ${startWeek} - Tuần ${endWeek}`;
+        const title = item.querySelector("h5");
+        if (title) {
+            const phaseTitle = title.dataset.phaseTitle || title.textContent.replace(/^Tuần \d+(?: - Tuần \d+)?:\s*/, "");
+            title.dataset.phaseTitle = phaseTitle;
+            title.textContent = `${weekRange}: ${phaseTitle}`;
+        }
+
+        item.classList.toggle("done", currentWeek > endWeek);
+        item.classList.toggle("active", currentWeek >= startWeek && currentWeek <= endWeek);
+        previousEnd = endWeek;
+    });
 }
 
 // =========================================================
@@ -611,7 +637,7 @@ function renderTodoList(todos) {
 async function toggleTodoStatus(todoId) {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const res = await fetch(`http://localhost:5000/api/schedule/todos/toggle/${todoId}`, {
+        const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/todos/toggle/${todoId}`, {
             method: "PATCH",
             headers: {
                 "Authorization": `Bearer ${token}`

@@ -50,16 +50,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     // =========================================================================
     let registrationChartInstance = null;
     let statusChartInstance = null;
+    let latestDashboardReport = null;
+    const exportReportBtn = document.getElementById("exportReportBtn");
     
     // Cấu hình URL API Backend (Sửa port nếu backend chạy port khác)
-    const API_BASE_URL = "http://localhost:5000/api";
+    const API_BASE_URL = window.APP_CONFIG.API_BASE_URL + "/api";
 
     // =========================================================================
     // 3. HÀM FETCH DỮ LIỆU TỪ BACKEND
     // =========================================================================
-    async function fetchDashboardData(semester = "") {
+    async function fetchDashboardData(semester = "all") {
+        latestDashboardReport = null;
+        if (exportReportBtn) exportReportBtn.disabled = true;
+
         try {
-            const url = `${API_BASE_URL}/dashboard/admin${semester ? `?semester=${semester}` : ''}`;
+            const params = new URLSearchParams({ semester });
+            const url = `${API_BASE_URL}/dashboard/admin?${params}`;
             console.log("Đang gọi API Dashboard tại:", url);
 
             const res = await fetch(url, {
@@ -72,6 +78,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             if (!res.ok) {
                 console.error(`Lỗi gọi API: Mã lỗi ${res.status} - ${res.statusText}`);
+                const errorData = await res.json().catch(() => ({}));
+                window.showAppNotification?.(errorData.message || "Không thể tải dữ liệu dashboard.");
                 if (res.status === 401 || res.status === 403) {
                     showAppNotification("Phiên đăng nhập hết hạn hoặc bạn không có quyền truy cập!");
                     // Có thể thực hiện tự động đăng xuất ở đây
@@ -89,6 +97,17 @@ document.addEventListener("DOMContentLoaded", async () => {
                 const pendingTopics = responseData.pendingTopicsList || responseData.data?.pendingTopicsList;
 
                 if (kpiData) {
+                    const selectedSemester = document.getElementById("semesterSelect");
+                    latestDashboardReport = {
+                        semesterName: responseData.selectedSemester?.name ||
+                            (semester === "all"
+                                ? "Toàn bộ học kỳ"
+                                : selectedSemester?.selectedOptions?.[0]?.textContent?.trim() || "Học kỳ được chọn"),
+                        kpi: kpiData,
+                        chart: chartData || {},
+                        pendingTopics: Array.isArray(pendingTopics) ? pendingTopics : []
+                    };
+                    if (exportReportBtn) exportReportBtn.disabled = false;
                     renderKPIs(kpiData);
                     renderDoughnutChart(kpiData);
                 } else {
@@ -106,6 +125,58 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         } catch (error) {
             console.error("Không thể kết nối đến máy chủ Backend:", error);
+            window.showAppNotification?.("Không thể kết nối đến máy chủ để tải dashboard.");
+        }
+    }
+
+    async function loadSemesterOptions(select) {
+        select.disabled = true;
+        select.replaceChildren();
+        const loadingOption = document.createElement("option");
+        loadingOption.textContent = "Đang tải học kỳ...";
+        loadingOption.value = "";
+        select.append(loadingOption);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/semesters`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success || !Array.isArray(result.data)) {
+                throw new Error(result.message || "Không thể tải danh sách học kỳ.");
+            }
+
+            const semesters = result.data.filter(semester => semester?._id && semester.name);
+            select.replaceChildren();
+            const allOption = document.createElement("option");
+            allOption.value = "all";
+            allOption.textContent = "Toàn bộ học kỳ";
+            select.append(allOption);
+
+            semesters.forEach(semester => {
+                const option = document.createElement("option");
+                option.value = semester._id;
+                option.textContent = semester.name;
+                select.append(option);
+            });
+
+            const activeSemester = semesters.find(semester => semester.is_active);
+            select.value = activeSemester?._id || "all";
+            select.disabled = false;
+            if (semesters.length && !activeSemester) {
+                window.showAppNotification?.(
+                    "Chưa có học kỳ đang hoạt động; dashboard đang hiển thị toàn bộ học kỳ."
+                );
+            }
+            return select.value;
+        } catch (error) {
+            const errorOption = document.createElement("option");
+            errorOption.value = "";
+            errorOption.textContent = "Không tải được học kỳ";
+            select.replaceChildren(errorOption);
+            console.error("Không thể tải danh sách học kỳ:", error);
+            window.showAppNotification?.(error.message || "Không thể tải danh sách học kỳ.");
+            return null;
         }
     }
 
@@ -285,16 +356,88 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 5. LẮP SỰ KIỆN VÀ KHỞI CHẠY TẢI DỮ LIỆU
     // =========================================================================
 
+    function csvCell(value) {
+        let text = value == null ? "" : String(value);
+        if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
+        return `"${text.replace(/"/g, '""')}"`;
+    }
+
+    if (exportReportBtn) {
+        exportReportBtn.addEventListener("click", () => {
+            if (!latestDashboardReport) {
+                window.showAppNotification?.("Chưa có dữ liệu dashboard để xuất báo cáo.");
+                return;
+            }
+
+            try {
+                const { semesterName, kpi, chart, pendingTopics } = latestDashboardReport;
+                const rows = [
+                    ["BÁO CÁO TỔNG QUAN HỆ THỐNG"],
+                    ["Học kỳ", semesterName],
+                    ["Thời điểm xuất", new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })],
+                    [],
+                    ["Chỉ số", "Số lượng"],
+                    ["Sinh viên", kpi.totalStudents],
+                    ["Giảng viên", kpi.totalLecturers],
+                    ["Đề tài đăng ký", kpi.totalTopics],
+                    ["Đã phê duyệt", kpi.approvedTopics],
+                    ["Chờ phê duyệt", kpi.pendingTopics],
+                    ["Bị từ chối", kpi.rejectedTopics],
+                    ["Yêu cầu chỉnh sửa", kpi.needRevisionTopics],
+                    ["Đề tài đang thực hiện", kpi.inProgressTopics],
+                    ["Đề tài duyệt từ giảng viên", kpi.approvedBySource?.lecturer],
+                    ["Đề tài duyệt từ sinh viên", kpi.approvedBySource?.student],
+                    [],
+                    ["Đăng ký theo tháng"],
+                    ["Tháng", "Số đề tài"]
+                ];
+
+                (chart.monthLabels || []).forEach((label, index) => {
+                    rows.push([label, chart.monthlyRegistrations?.[index] ?? 0]);
+                });
+
+                rows.push(
+                    [],
+                    ["5 đề tài gần nhất chờ xử lý"],
+                    ["Mã đề tài", "Tên đề tài", "MSSV trưởng nhóm", "Giảng viên hướng dẫn"]
+                );
+                pendingTopics.forEach(topic => {
+                    rows.push([
+                        topic.topic_code || "",
+                        topic.title || "",
+                        topic.leader_code || "",
+                        topic.lecturer_name || topic.lecturer_code || ""
+                    ]);
+                });
+
+                const csv = `\uFEFF${rows.map(row => row.map(csvCell).join(",")).join("\r\n")}`;
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+                const downloadUrl = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = downloadUrl;
+                link.download = `bao-cao-tong-quan-${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+                window.showAppNotification?.("Đã tải báo cáo tổng quan dạng CSV.");
+            } catch (error) {
+                console.error("Không thể tạo báo cáo dashboard:", error);
+                window.showAppNotification?.("Không thể tạo báo cáo. Vui lòng thử lại.");
+            }
+        });
+    }
+
     // Tải dữ liệu ban đầu
     const semesterSelect = document.getElementById("semesterSelect");
-    const initialSemester = semesterSelect ? semesterSelect.value : "";
-    await fetchDashboardData(initialSemester);
-
-    // Lắng nghe sự kiện đổi Học kỳ
     if (semesterSelect) {
-        semesterSelect.addEventListener("change", (e) => {
-            fetchDashboardData(e.target.value);
+        const initialSemester = await loadSemesterOptions(semesterSelect);
+        if (initialSemester) await fetchDashboardData(initialSemester);
+        semesterSelect.addEventListener("change", event => {
+            if (event.target.value) fetchDashboardData(event.target.value);
         });
+    } else {
+        await fetchDashboardData("all");
     }
 
     // Xử lý Modal Đăng xuất

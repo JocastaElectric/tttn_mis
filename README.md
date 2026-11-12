@@ -92,3 +92,12 @@ Trình quản lý gói (NPM): v9.x trở lên
 Cơ sở dữ liệu: MongoDB v6.0 trở lên (hoặc MongoDB Compass / MongoDB Atlas Cloud)
 
 Trình duyệt Web: Chrome, Edge, Safari hoặc Firefox (Hỗ trợ HTML5 & ES6 JavaScript)
+
+## 5. CẤU HÌNH KHI TRIỂN KHAI
+
+1. Sao chép `Code/Backend/.env.example` thành `Code/Backend/.env`, sau đó cấu hình `MONGO_URI`, `JWT_SECRET`, `FRONTEND_API_BASE_URL` và `CORS_ORIGINS`.
+2. `FRONTEND_API_BASE_URL` là origin của API backend, ví dụ `https://api.example.edu.vn`. `CORS_ORIGINS` là danh sách origin frontend được phép, phân cách bằng dấu phẩy, ví dụ `https://tttn.example.edu.vn`. Không thêm đường dẫn hoặc dấu `/` ở cuối origin.
+3. Tạo cấu hình frontend từ biến môi trường backend bằng lệnh `npm --prefix Code/Backend run configure-frontend`. Lệnh này sinh `Code/Frontend/js/config.js`; chạy lại sau khi đổi `FRONTEND_API_BASE_URL`.
+4. Phục vụ frontend qua HTTP/HTTPS, không mở trực tiếp các tệp HTML bằng `file://`.
+
+Khi `CORS_ORIGINS` chưa được cấu hình, backend chỉ cho phép hai origin Live Server cục bộ: `http://localhost:5500` và `http://127.0.0.1:5500`.

@@ -15,7 +15,7 @@ function getAuthForRole(role) {
 document.addEventListener("DOMContentLoaded", () => {
     // 1. KIỂM TRA ĐĂNG NHẬP & THÔNG TIN USER
     const pageName = window.location.pathname.split('/').pop().toLowerCase();
-    const isLecturerPage = pageName === '../lecturer/lecturer-notifications.html';
+    const isLecturerPage = pageName === 'lecturer-notifications.html';
 
     const studentAuth = getAuthForRole("STUDENT");
     const lecturerAuth = getAuthForRole("LECTURER");
@@ -61,9 +61,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const fetchNotifications = async () => {
         try {
             const endpoint = isLecturerPage
-                ? `http://localhost:5000/api/notifications/lecturer/${currentUserCode}`
-                : `http://localhost:5000/api/notifications/${currentUserCode}`;
-            const response = await fetch(endpoint);
+                ? `${window.APP_CONFIG.API_BASE_URL}/api/notifications/lecturer/${currentUserCode}`
+                : `${window.APP_CONFIG.API_BASE_URL}/api/notifications/${currentUserCode}`;
+            const response = await fetch(endpoint, {
+                headers: { Authorization: `Bearer ${auth.token}` }
+            });
             const data = await response.json();
 
             if (data.success) {
@@ -190,8 +192,9 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             try {
-                const response = await fetch(`http://localhost:5000/api/notifications/read-all/${currentUserCode}?role=${currentUserRole}`, {
-                    method: 'PATCH'
+                const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/notifications/read-all/${currentUserCode}`, {
+                    method: 'PATCH',
+                    headers: { Authorization: `Bearer ${auth.token}` }
                 });
                 const data = await response.json();
 
@@ -246,8 +249,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!item.is_read) {
             try {
-                await fetch(`http://localhost:5000/api/notifications/read/${item._id}?user_code=${encodeURIComponent(currentUserCode)}`, {
-                    method: 'PATCH'
+                await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/notifications/read/${item._id}`, {
+                    method: 'PATCH',
+                    headers: { Authorization: `Bearer ${auth.token}` }
                 });
                 item.is_read = true;
                 renderNotifications();
@@ -275,14 +279,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (cancelLogoutBtn) cancelLogoutBtn.addEventListener("click", () => logoutModal.style.display = "none");
     if (confirmLogoutBtn) {
         confirmLogoutBtn.addEventListener("click", () => {
-            localStorage.removeItem("studentAuth");
-            if (localStorage.getItem("activeRole") === "STUDENT") {
+            localStorage.removeItem(`${currentUserRole.toLowerCase()}Auth`);
+            if (localStorage.getItem("activeRole") === currentUserRole) {
                 localStorage.removeItem("activeRole");
             }
-            if (localStorage.getItem("token") && JSON.parse(localStorage.getItem("user") || "null")?.role === "STUDENT") {
-                localStorage.removeItem("token");
-                localStorage.removeItem("user");
-            }
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
             sessionStorage.clear();
             window.location.href = "../auth/index.html";
         });

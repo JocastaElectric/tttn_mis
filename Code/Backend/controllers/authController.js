@@ -1,8 +1,19 @@
 const User = require('../models/User');
 const Topic = require('../models/Topic');
 const Group = require('../models/Group');
+const GroupJoinRequest = require('../models/GroupJoinRequest');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+
+const escapeRegex = value => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const codeRegex = value => new RegExp(`^${escapeRegex(value)}$`, 'i');
+const topicMemberFilter = userCode => ({
+    $or: [
+        { leader_code: codeRegex(userCode) },
+        { member2_code: codeRegex(userCode) },
+        { member3_code: codeRegex(userCode) }
+    ]
+});
 
 exports.login = async (req, res) => {
     try {
@@ -47,9 +58,13 @@ exports.login = async (req, res) => {
 // Đổi mật khẩu (yêu cầu người dùng đã đăng nhập, xác minh mật khẩu hiện tại)
 exports.changePassword = async (req, res) => {
     try {
-        const { user_code, currentPassword, newPassword } = req.body;
+        const user_code = String(req.user?.user_code || '').trim();
+        const { currentPassword, newPassword } = req.body;
 
-        if (!user_code || !currentPassword || !newPassword) {
+        if (!user_code) {
+            return res.status(401).json({ success: false, message: 'Vui lòng đăng nhập lại.' });
+        }
+        if (!currentPassword || !newPassword) {
             return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ thông tin!' });
         }
 
@@ -148,7 +163,18 @@ exports.createStudent = async (req, res) => {
         });
 
         await student.save();
-        return res.status(201).json({ success: true, message: 'Thêm sinh viên thành công!', data: student });
+        return res.status(201).json({
+            success: true,
+            message: 'Thêm sinh viên thành công!',
+            data: {
+                user_code: student.user_code,
+                full_name: student.full_name,
+                role: student.role,
+                email: student.email,
+                class: student.class,
+                major: student.major
+            }
+        });
     } catch (error) {
         console.error('Lỗi tạo sinh viên:', error);
         return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi tạo sinh viên!', error: error.message });
@@ -221,7 +247,18 @@ exports.createLecturer = async (req, res) => {
         });
 
         await lecturer.save();
-        return res.status(201).json({ success: true, message: 'Thêm giảng viên thành công!', data: lecturer });
+        return res.status(201).json({
+            success: true,
+            message: 'Thêm giảng viên thành công!',
+            data: {
+                user_code: lecturer.user_code,
+                full_name: lecturer.full_name,
+                role: lecturer.role,
+                email: lecturer.email,
+                degree: lecturer.degree,
+                dept: lecturer.dept
+            }
+        });
     } catch (error) {
         console.error('Lỗi tạo giảng viên:', error);
         return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi tạo giảng viên!', error: error.message });
@@ -334,7 +371,9 @@ exports.getLecturers = async (req, res) => {
             full_name: item.full_name,
             degree: item.degree || 'Chưa cập nhật',
             dept: item.dept || 'Chưa cập nhật',
-            email: item.email || 'Chưa cập nhật',
+            ...(String(req.user?.role || '').toUpperCase() === 'ADMIN'
+                ? { email: item.email || 'Chưa cập nhật' }
+                : {}),
             groupsCount: groupMap[item.user_code] || 0,
             topicsCount: topicMap[item.user_code] || 0
         }));
@@ -414,7 +453,47 @@ exports.getUserByCode = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy người dùng!' });
         }
 
-        res.json({
+        const requesterCode = String(req.user?.user_code || '').trim();
+        const requesterRole = String(req.user?.role || '').toUpperCase();
+        const isAdmin = requesterRole === 'ADMIN';
+        const isOwner = requesterCode.toUpperCase() === user.user_code.toUpperCase();
+
+        if (!isAdmin && !isOwner) {
+            const userCodePattern = codeRegex(user.user_code);
+            let related = false;
+
+            if (requesterRole === 'STUDENT' && user.role === 'STUDENT') {
+                related = Boolean(await Topic.exists({
+                    $and: [
+                        topicMemberFilter(requesterCode),
+                        topicMemberFilter(user.user_code)
+                    ]
+                })) || Boolean(await GroupJoinRequest.exists({
+                    status: { $in: ['PENDING', 'ACCEPTED'] },
+                    $or: [
+                        { leader_code: codeRegex(requesterCode), member_code: userCodePattern },
+                        { leader_code: userCodePattern, member_code: codeRegex(requesterCode) }
+                    ]
+                }));
+            } else if (requesterRole === 'LECTURER' && user.role === 'STUDENT') {
+                related = Boolean(await Topic.exists({
+                    lecturer_code: codeRegex(requesterCode),
+                    ...topicMemberFilter(user.user_code)
+                }));
+            }
+
+            if (!related) {
+                return res.status(403).json({ success: false, message: 'Bạn không có quyền xem hồ sơ người dùng này.' });
+            }
+
+            return res.json({
+                user_code: user.user_code,
+                full_name: user.full_name,
+                role: user.role
+            });
+        }
+
+        return res.json({
             user_code: user.user_code,
             full_name: user.full_name,
             role: user.role,
@@ -431,7 +510,11 @@ exports.getUserByCode = async (req, res) => {
 // Sinh viên tự cập nhật email và số điện thoại của tài khoản
 exports.updateStudentProfile = async (req, res) => {
     try {
-        const { user_code } = req.params;
+        const user_code = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !user_code ||
+            user_code.toUpperCase() !== String(req.params.user_code || '').trim().toUpperCase()) {
+            return res.status(403).json({ success: false, message: 'Bạn chỉ có thể cập nhật hồ sơ của mình.' });
+        }
         const { email, phone, class: studentClass, major } = req.body;
         const student = await User.findOne({ user_code, role: 'STUDENT' });
 

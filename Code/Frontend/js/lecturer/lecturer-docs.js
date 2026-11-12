@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:5000";
+const API_BASE = window.APP_CONFIG.API_BASE_URL + "";
 
 document.addEventListener("DOMContentLoaded", () => {
     // 1. KIỂM TRA QUYỀN TRUY CẬP
@@ -314,7 +314,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 const row = e.target.closest("tr");
                 const docId = row.dataset.id;
 
-                if (!confirm("Bạn có chắc chắn muốn xóa tài liệu này không?")) return;
+                const confirmed = await window.showConfirmDialog({
+                    title: "Xác nhận xóa tài liệu",
+                    message: "Bạn có chắc chắn muốn xóa tài liệu này không?",
+                    confirmText: "Xóa tài liệu",
+                    danger: true
+                });
+                if (!confirmed) return;
 
                 try {
                     const response = await fetch(`${API_BASE}/api/documents/${docId}`, { method: "DELETE", headers: authHeaders });
@@ -358,15 +364,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     showAppNotification("Không thể kết nối đến máy chủ. Vui lòng kiểm tra Server!");
                 }
             };
-        });
-    }
-
-    // 7. ĐĂNG XUẤT
-    const logoutBtn = document.getElementById("logoutBtn");
-    if (logoutBtn) {
-        logoutBtn.addEventListener("click", () => {
-            localStorage.removeItem("user");
-            window.location.href = "../auth/index.html";
         });
     }
 

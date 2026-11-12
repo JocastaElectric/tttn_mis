@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema({
     recipient_code: { type: String, default: null },
+    event_key: { type: String, default: undefined, select: false },
     target: { type: String, enum: ['all', 'students', 'lecturers'], default: 'all' },
     type: { 
         type: String, 
@@ -22,5 +23,7 @@ const notificationSchema = new mongoose.Schema({
     read_by: { type: [String], default: [] },
     sender_name: { type: String, default: "Hệ thống" }
 }, { timestamps: true });
+
+notificationSchema.index({ event_key: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Notification', notificationSchema);

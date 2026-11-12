@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="../../css/lecturer/lecturer-pending-alert.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
+    <link rel="stylesheet" href="../../css/common/lecturer-logout-modal.css">
 </head>
 <body>
     <div class="app-layout">
@@ -95,14 +96,15 @@
         <div class="modal-box small">
             <div class="modal-icon"><i class="fa-solid fa-right-from-bracket"></i></div>
             <h3>Xác nhận đăng xuất</h3>
-            <p>Bạn có chắc chắn muốn thoát khỏi phiên làm việc không?</p>
+            <p>Bạn có chắc chắn muốn thoát khỏi hệ thống giảng viên không?</p>
             <div class="modal-actions">
-                <button id="cancelLogoutBtn" class="btn-cancel">Hủy bỏ</button>
-                <button id="confirmLogoutBtn" class="btn-confirm">Đăng xuất</button>
+                <button type="button" id="cancelLogoutBtn" class="btn-cancel">Hủy bỏ</button>
+                <button type="button" id="confirmLogoutBtn" class="btn-confirm">Đăng xuất</button>
             </div>
         </div>
     </div>
 
+    <script src="../../js/config.js"></script>
     <script src="../../js/shared/notifications.js"></script>
     <script src="../../js/lecturer/lecturer-pending-alert.js"></script>
     <script src="../../js/common/app-notifications.js"></script>

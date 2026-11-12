@@ -1,29 +1,37 @@
 const express = require('express');
 const router = express.Router();
 const notificationController = require('../controllers/notificationController');
+const authMiddleware = require('../middlewares/authMiddleware');
+
+const requireRole = (...roles) => (req, res, next) => {
+    if (roles.includes(String(req.user?.role || '').toUpperCase())) return next();
+    return res.status(403).json({ success: false, message: 'Bạn không có quyền thực hiện thao tác này.' });
+};
+
+const requireAdminRole = requireRole('ADMIN', 'ADMINISTRATOR', 'QUAN_TRI', 'QUAN_TRI_VIEN');
 
 // Lấy danh sách tất cả thông báo (Admin quản lý)
-router.get('/admin/all', notificationController.getAllNotifications);
+router.get('/admin/all', authMiddleware, requireAdminRole, notificationController.getAllNotifications);
 
 // Lấy danh sách thông báo cho Giảng viên
-router.get('/lecturer/:lecturerCode', notificationController.getLecturerNotifications);
+router.get('/lecturer/:lecturerCode', authMiddleware, requireRole('LECTURER'), notificationController.getLecturerNotifications);
 
 // Lấy danh sách thông báo cho sinh viên
-router.get('/:studentCode', notificationController.getNotifications);
+router.get('/:studentCode', authMiddleware, requireRole('STUDENT'), notificationController.getNotifications);
 
 // Tạo thông báo mới
-router.post('/', notificationController.createNotification);
+router.post('/', authMiddleware, requireAdminRole, notificationController.createNotification);
 
 // Cập nhật thông báo
-router.put('/:id', notificationController.updateNotification);
+router.put('/:id', authMiddleware, requireAdminRole, notificationController.updateNotification);
 
 // Xóa thông báo
-router.delete('/:id', notificationController.deleteNotification);
+router.delete('/:id', authMiddleware, requireAdminRole, notificationController.deleteNotification);
 
 // Đánh dấu 1 thông báo đã đọc
-router.patch('/read/:id', notificationController.markAsRead);
+router.patch('/read/:id', authMiddleware, requireRole('STUDENT', 'LECTURER'), notificationController.markAsRead);
 
 // Đánh dấu tất cả đã đọc
-router.patch('/read-all/:studentCode', notificationController.markAllAsRead);
+router.patch('/read-all/:studentCode', authMiddleware, requireRole('STUDENT', 'LECTURER'), notificationController.markAllAsRead);
 
 module.exports = router;

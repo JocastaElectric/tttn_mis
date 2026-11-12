@@ -52,6 +52,12 @@
                 <div class="menu-heading">QUẢN LÝ NGHIỆP VỤ</div>
                 <ul class="menu-list">
                     <li class="menu-item">
+                        <a href="admin-semesters.html">
+                            <i class="fa-solid fa-calendar-days"></i>
+                            <span>Học kỳ & đăng ký</span>
+                        </a>
+                    </li>
+                    <li class="menu-item">
                         <a href="admin-teams.html">
                             <i class="fa-solid fa-users-rectangle"></i>
                             <span>Nhóm & Phân công</span>
@@ -94,10 +100,8 @@
                 <div class="navbar-right">
                     <div class="semester-filter">
                         <i class="fa-solid fa-graduation-cap"></i>
-                        <select id="semesterSelect" class="select-clean">
-                            <option value="HK1-2025-2026">Học kỳ 1 (2025 - 2026)</option>
-                            <option value="HK2-2025-2026" selected>Học kỳ 2 (2025 - 2026)</option>
-                            <option value="HK1-2026-2027">Học kỳ 1 (2026 - 2027)</option>
+                        <select id="semesterSelect" class="select-clean" aria-label="Lọc tổng quan theo học kỳ">
+                            <option value="">Đang tải học kỳ...</option>
                         </select>
                     </div>
                     <div class="user-profile">
@@ -254,14 +258,14 @@
                                 <div class="qa-icon orange"><i class="fa-solid fa-bullhorn"></i></div>
                                 <span>Tạo thông báo</span>
                             </a>
-                            <a href="#" id="exportReportBtn" class="quick-card">
+                            <button type="button" id="exportReportBtn" class="quick-card" disabled>
                                 <div class="qa-icon red"><i class="fa-solid fa-file-export"></i></div>
-                                <span>Xuất báo cáo</span>
-                            </a>
-                            <a href="#" id="backupDbBtn" class="quick-card">
+                                <span>Xuất báo cáo CSV</span>
+                            </button>
+                            <div id="backupDbBtn" class="quick-card quick-card-disabled" aria-disabled="true" title="Chưa có quy trình sao lưu và khôi phục được kiểm thử.">
                                 <div class="qa-icon gray"><i class="fa-solid fa-database"></i></div>
-                                <span>Sao lưu dữ liệu</span>
-                            </a>
+                                <span>Sao lưu dữ liệu (chưa khả dụng)</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -287,6 +291,7 @@
         </div>
     </div>
 
+    <script src="../../js/config.js"></script>
     <script src="../../js/admin/admin.js"></script>
     <script src="../../js/admin/admin-sidebar.js"></script>
     <script src="../../js/common/app-notifications.js"></script>

@@ -31,7 +31,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function fetchStudents() {
         try {
-            const response = await fetch("http://localhost:5000/api/auth/students");
+            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/students", {
+                headers: { Authorization: `Bearer ${getAdminToken() || ""}` }
+            });
             const result = await response.json();
 
             if (!response.ok || !result.success) {
@@ -162,13 +164,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             let response;
             if (currentEditingId) {
-                response = await fetch(`http://localhost:5000/api/auth/students/${currentEditingId}`, {
+                response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/students/${currentEditingId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
             } else {
-                response = await fetch("http://localhost:5000/api/auth/students", {
+                response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/students", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -211,7 +213,13 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".delete-btn").forEach(btn => {
             btn.onclick = async (e) => {
                 const id = e.currentTarget.getAttribute("data-id");
-                if (!confirm(`Bạn chắc chắn muốn xóa sinh viên ${id}?`)) return;
+                const confirmed = await window.showConfirmDialog({
+                    title: "Xác nhận xóa sinh viên",
+                    message: `Bạn có chắc chắn muốn xóa sinh viên ${id}?`,
+                    confirmText: "Xóa sinh viên",
+                    danger: true
+                });
+                if (!confirmed) return;
 
                 const token = getAdminToken();
                 if (!token) {
@@ -220,7 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
 
                 try {
-                    const response = await fetch(`http://localhost:5000/api/auth/students/${encodeURIComponent(id)}`, {
+                    const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/students/${encodeURIComponent(id)}`, {
                         method: "DELETE",
                         headers: { "Authorization": `Bearer ${token}` }
                     });
@@ -251,5 +259,6 @@ document.addEventListener("DOMContentLoaded", () => {
         window.location.href = "../auth/index.html";
     };
 
+    window.addEventListener("users-imported", fetchStudents);
     fetchStudents();
 });

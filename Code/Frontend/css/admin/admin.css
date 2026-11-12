@@ -357,12 +357,30 @@ body {
     text-decoration: none;
     color: #334155;
     transition: all 0.2s;
+    background: #fff;
+    font: inherit;
 }
 .quick-card:hover {
     border-color: #2563eb;
     background-color: #eff6ff;
     color: #1d4ed8;
     transform: translateY(-2px);
+}
+.quick-card:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+.quick-card:disabled:hover,
+.quick-card-disabled:hover {
+    border-color: #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+    transform: none;
+}
+.quick-card-disabled {
+    cursor: not-allowed;
+    background: #f8fafc;
+    color: #64748b;
 }
 
 .qa-icon {

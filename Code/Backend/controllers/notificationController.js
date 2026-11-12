@@ -1,9 +1,21 @@
 const Notification = require('../models/Notification');
 
+function getUserCode(req) {
+    return String(req.user?.user_code || '').trim().toUpperCase();
+}
+
+function isOwnNotificationsRequest(req, requestedCode, expectedRole) {
+    return String(req.user?.role || '').toUpperCase() === expectedRole &&
+        getUserCode(req) === String(requestedCode || '').trim().toUpperCase();
+}
+
 // 1. Lấy danh sách thông báo cho Sinh viên
 exports.getNotifications = async (req, res) => {
     try {
-        const { studentCode } = req.params;
+        const studentCode = getUserCode(req);
+        if (!isOwnNotificationsRequest(req, req.params.studentCode, 'STUDENT')) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền xem thông báo này.' });
+        }
 
         const notifications = await Notification.find({
             status: 'published',
@@ -12,7 +24,6 @@ exports.getNotifications = async (req, res) => {
                 { recipient_code: null, target: { $in: ['all', 'students'] } }
             ]
         }).sort({ createdAt: -1 });
-
         const result = notifications.map(notification => {
             const item = notification.toObject();
             item.is_read = item.read_by.includes(studentCode);
@@ -36,7 +47,10 @@ exports.getNotifications = async (req, res) => {
 // 1b. Lấy danh sách thông báo cho Giảng viên
 exports.getLecturerNotifications = async (req, res) => {
     try {
-        const { lecturerCode } = req.params;
+        const lecturerCode = getUserCode(req);
+        if (!isOwnNotificationsRequest(req, req.params.lecturerCode, 'LECTURER')) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền xem thông báo này.' });
+        }
 
         const notifications = await Notification.find({
             status: 'published',
@@ -71,7 +85,7 @@ exports.getLecturerNotifications = async (req, res) => {
 // 1c. Lấy danh sách thông báo cho Admin quản lý
 exports.getAllNotifications = async (req, res) => {
     try {
-        const notifications = await Notification.find().sort({ createdAt: -1 });
+        const notifications = await Notification.find({ event_key: { $exists: false } }).sort({ createdAt: -1 });
         res.status(200).json({ success: true, notifications });
     } catch (error) {
         res.status(500).json({ message: "Lỗi máy chủ!", error: error.message });
@@ -113,8 +127,8 @@ exports.updateNotification = async (req, res) => {
         const { id } = req.params;
         const { title, content, target, priority, isPinned, status } = req.body;
 
-        const notification = await Notification.findByIdAndUpdate(
-            id,
+        const notification = await Notification.findOneAndUpdate(
+            { _id: id, event_key: { $exists: false } },
             {
                 title,
                 content,
@@ -141,7 +155,10 @@ exports.updateNotification = async (req, res) => {
 exports.deleteNotification = async (req, res) => {
     try {
         const { id } = req.params;
-        const notification = await Notification.findByIdAndDelete(id);
+        const notification = await Notification.findOneAndDelete({
+            _id: id,
+            event_key: { $exists: false }
+        });
         if (!notification) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo.' });
         }
@@ -155,9 +172,24 @@ exports.deleteNotification = async (req, res) => {
 exports.markAsRead = async (req, res) => {
     try {
         const { id } = req.params;
-        const userCode = req.query.user_code;
-        const update = userCode ? { $addToSet: { read_by: userCode } } : { is_read: true };
-        await Notification.findByIdAndUpdate(id, update);
+        const userCode = getUserCode(req);
+        const role = String(req.user?.role || '').toUpperCase();
+        if (!['STUDENT', 'LECTURER'].includes(role)) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền cập nhật thông báo.' });
+        }
+        const targets = role === 'LECTURER' ? ['all', 'lecturers'] : ['all', 'students'];
+        const notification = await Notification.findOneAndUpdate(
+            {
+                _id: id,
+                status: 'published',
+                $or: [
+                    { recipient_code: userCode },
+                    { recipient_code: null, target: { $in: targets } }
+                ]
+            },
+            { $addToSet: { read_by: userCode } }
+        );
+        if (!notification) return res.status(404).json({ success: false, message: 'Không tìm thấy thông báo.' });
 
         res.status(200).json({ success: true, message: "Đã đánh dấu đã đọc" });
     } catch (error) {
@@ -168,8 +200,12 @@ exports.markAsRead = async (req, res) => {
 // 6. Đánh dấu TẤT CẢ thông báo là ĐÃ ĐỌC
 exports.markAllAsRead = async (req, res) => {
     try {
-        const { studentCode } = req.params;
-        const role = (req.query.role || 'STUDENT').toUpperCase();
+        const studentCode = getUserCode(req);
+        const role = String(req.user?.role || '').toUpperCase();
+        if (!['STUDENT', 'LECTURER'].includes(role) ||
+            !isOwnNotificationsRequest(req, req.params.studentCode, role)) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền cập nhật các thông báo này.' });
+        }
 
         const targetFilters = role === 'LECTURER'
             ? ['all', 'lecturers']

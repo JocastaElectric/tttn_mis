@@ -21,6 +21,20 @@ const topicSchema = new mongoose.Schema({
         type: String, 
         default: null 
     },   // MSSV Thành viên 3 (nếu có - dự phòng)
+    pool_topic_id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LecturerTopic',
+        default: undefined
+    },
+    active_pool_topic_id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LecturerTopic',
+        default: undefined
+    },
+    active_title_key: {
+        type: String,
+        default: undefined
+    },
 
     // 3. GIẢNG VIÊN HƯỚNG DẪN
     lecturer_code: { 
@@ -79,6 +93,15 @@ const topicSchema = new mongoose.Schema({
     }             // Nhận xét của GV khi duyệt/yêu cầu sửa/từ chối
 
 }, { timestamps: true });
+
+topicSchema.index(
+    { active_pool_topic_id: 1 },
+    { unique: true, sparse: true, name: 'unique_active_pool_topic' }
+);
+topicSchema.index(
+    { active_title_key: 1 },
+    { unique: true, sparse: true, name: 'unique_active_topic_title' }
+);
 
 // Tự động phát sinh topic_code ngẫu nhiên nếu chưa truyền vào khi tạo mới
 topicSchema.pre('save', function(next) {

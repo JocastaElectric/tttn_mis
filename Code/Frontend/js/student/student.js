@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let isEditing = false;
     let hasEditedMemberCodes = false;
     let allPoolTopics = [];
+    let registrationWindowOpen = false;
 
     // Header Info Elements
     const userNameEl = document.getElementById("userName");
@@ -78,6 +79,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const submitBtn = document.getElementById("submitBtn");
     const msgBox = document.getElementById("formMessage");
     const statusEl = document.getElementById("topicStatus");
+    const registrationWindowNotice = document.getElementById("registrationWindowNotice");
 
     // Modal Cancel Elements
     const cancelModal = document.getElementById("cancelModal");
@@ -108,11 +110,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     function clearCurrentStudentFromMemberField(inputEl) {
-        const enteredCode = extractCode(inputEl?.value).toUpperCase();
+        const enteredCode = extractCode(inputEl?.value).trim();
+        if (enteredCode && enteredCode !== enteredCode.toUpperCase()) {
+            showMessage("error", `Mã sinh viên "${enteredCode}" không hợp lệ. Vui lòng kiểm tra và nhập đúng mã số sinh viên.`);
+            return;
+        }
+
         const currentStudentCode = String(user.user_code || "").trim().toUpperCase();
         if (!enteredCode || enteredCode !== currentStudentCode) return;
 
-        inputEl.value = "";
         showMessage("error", "Mã sinh viên của bạn đã là Trưởng nhóm, không thể nhập lại ở Thành viên 2 hoặc 3.");
     }
 
@@ -148,6 +154,57 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (msgBox) {
             msgBox.style.display = "none";
             msgBox.className = "message-box";
+        }
+    }
+
+    async function loadRegistrationWindow() {
+        try {
+            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/semesters/registration-status", {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || "Không thể tải thời hạn đăng ký.");
+
+            const data = result.data || {};
+            registrationWindowOpen = data.is_open === true;
+            if (registrationWindowNotice) {
+                const isUpcoming = !registrationWindowOpen && data.state === "upcoming";
+                registrationWindowNotice.hidden = false;
+                registrationWindowNotice.classList.toggle("is-open", registrationWindowOpen);
+                registrationWindowNotice.classList.toggle("is-upcoming", isUpcoming);
+                registrationWindowNotice.classList.toggle("is-closed", !registrationWindowOpen && !isUpcoming);
+                if (registrationWindowOpen) {
+                    const status = document.createElement("span");
+                    status.className = "registration-window-status";
+                    status.textContent = "Đang trong thời hạn";
+                    const endDate = new Date(data.semester.registration_end_date);
+                    const endFormat = data.semester.registration_window_has_time
+                        ? { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }
+                        : { dateStyle: "short", timeZone: "Asia/Ho_Chi_Minh" };
+                    const details = ` đăng ký đề tài${data.semester?.name ? ` – ${data.semester.name}` : ""}. Hạn cuối: ${endDate.toLocaleString("vi-VN", endFormat)}.`;
+                    registrationWindowNotice.replaceChildren(status, document.createTextNode(details));
+                } else if (isUpcoming) {
+                    const status = document.createElement("span");
+                    status.className = "registration-window-status is-upcoming";
+                    status.textContent = "Chưa đến thời hạn đăng ký";
+                    const startDate = new Date(data.semester.registration_start_date);
+                    const startFormat = data.semester.registration_window_has_time
+                        ? { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }
+                        : { dateStyle: "short", timeZone: "Asia/Ho_Chi_Minh" };
+                    const details = `${data.semester?.name ? ` – ${data.semester.name}` : ""}. Mở đăng ký: ${startDate.toLocaleString("vi-VN", startFormat)}.`;
+                    registrationWindowNotice.replaceChildren(status, document.createTextNode(details));
+                } else {
+                    registrationWindowNotice.textContent = "Hiện không trong thời hạn đăng ký đề tài. ";
+                }
+            }
+        } catch (error) {
+            registrationWindowOpen = false;
+            if (registrationWindowNotice) {
+                registrationWindowNotice.hidden = false;
+                registrationWindowNotice.classList.add("is-closed");
+                registrationWindowNotice.textContent = "Không thể xác minh thời hạn đăng ký. Vui lòng tải lại trang hoặc liên hệ quản trị viên.";
+            }
+            console.error("Lỗi tải thời hạn đăng ký học kỳ:", error);
         }
     }
 
@@ -218,7 +275,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const loadProposedTopics = async () => {
         if (!proposedSelect) return;
         try {
-            const res = await fetch("http://localhost:5000/api/topics/lecturer-pool", {
+            const res = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/lecturer-pool", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
 
@@ -241,7 +298,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const loadLecturers = async () => {
         if (!lecturerSelect) return;
         try {
-            const res = await fetch("http://localhost:5000/api/auth/lecturers", {
+            const res = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/lecturers", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
 
@@ -294,7 +351,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         inputEl.value = partnerCode;
 
         try {
-            const res = await fetch(`http://localhost:5000/api/auth/users/${partnerCode}`, {
+            const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${partnerCode}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (res.ok) {
@@ -441,7 +498,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const checkTopicStatus = async () => {
         try {
-            const res = await fetch(`http://localhost:5000/api/topics/student/${user.user_code}`, {
+            const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/student/${user.user_code}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             
@@ -492,9 +549,17 @@ document.addEventListener("DOMContentLoaded", async () => {
                         if (editBtn) editBtn.style.display = "none";
                         if (cancelBtn) cancelBtn.style.display = "none";
                         disableForm(topic.status !== "JOIN_REJECTED");
+                        const joinMessageBackground = topic.status === "JOIN_ACCEPTED"
+                            ? "#f0fdf4" : topic.status === "JOIN_REJECTED" ? "#fef2f2" : "#fff7ed";
+                        const joinMessageBorder = topic.status === "JOIN_ACCEPTED"
+                            ? "#86efac" : topic.status === "JOIN_REJECTED" ? "#fecaca" : "#fdba74";
+                        const joinMessageColor = topic.status === "JOIN_ACCEPTED"
+                            ? "#166534" : topic.status === "JOIN_REJECTED" ? "#b91c1c" : "#9a3412";
+                        const joinMessageIcon = topic.status === "JOIN_ACCEPTED"
+                            ? "fa-circle-check" : topic.status === "JOIN_REJECTED" ? "fa-circle-xmark" : "fa-circle-info";
                         showMessage("info", "", `
-                            <div style="background-color: ${topic.status === "JOIN_REJECTED" ? "#fef2f2" : "#fff7ed"}; border: 1px solid ${topic.status === "JOIN_REJECTED" ? "#fecaca" : "#fdba74"}; color: ${topic.status === "JOIN_REJECTED" ? "#b91c1c" : "#9a3412"}; padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">
-                                <i class="fa-solid ${topic.status === "JOIN_REJECTED" ? "fa-circle-xmark" : "fa-circle-info"}" style="color: ${topic.status === "JOIN_REJECTED" ? "#dc2626" : "#ea580c"}; margin-right: 6px;"></i>
+                            <div style="background-color: ${joinMessageBackground}; border: 1px solid ${joinMessageBorder}; color: ${joinMessageColor}; padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">
+                                <i class="fa-solid ${joinMessageIcon}" style="color: ${joinMessageColor}; margin-right: 6px;"></i>
                                 ${topic.status === "JOIN_ACCEPTED"
                                     ? `Trưởng nhóm <strong>${topic.leader_code}</strong> đã xác nhận bạn. Vui lòng chờ Trưởng nhóm đăng ký đề tài.`
                                     : topic.status === "JOIN_REJECTED"
@@ -581,7 +646,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     async function loadJoinRequests() {
         if (!joinRequestsSection || !joinRequestsList || !token) return;
         try {
-            const res = await fetch(`http://localhost:5000/api/topics/join-requests/${encodeURIComponent(user.user_code)}`, {
+            const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/join-requests/${encodeURIComponent(user.user_code)}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (!res.ok) {
@@ -608,7 +673,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             joinRequestsList.querySelectorAll("button[data-id]").forEach(button => {
                 button.addEventListener("click", async () => {
                     button.disabled = true;
-                    const response = await fetch(`http://localhost:5000/api/topics/join-requests/${encodeURIComponent(user.user_code)}/${button.dataset.id}`, {
+                    const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/join-requests/${encodeURIComponent(user.user_code)}/${button.dataset.id}`, {
                         method: "PATCH",
                         headers: {
                             "Content-Type": "application/json",
@@ -627,7 +692,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // Khởi tạo tải dữ liệu danh sách
-    await Promise.all([loadLecturers(), loadProposedTopics()]);
+    await Promise.all([loadRegistrationWindow(), loadLecturers(), loadProposedTopics()]);
     await checkTopicStatus();
 
     // =========================================================================
@@ -657,11 +722,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     // =========================================================================
     // 8. SỰ KIỆN HỦY ĐĂNG KÝ VÀ MODAL LOGOUT
     // =========================================================================
-    if (logoutBtn) logoutBtn.addEventListener("click", () => { if (logoutModal) logoutModal.style.display = "flex"; });
+    if (logoutBtn && logoutModal) {
+        logoutBtn.addEventListener("click", event => {
+            event.preventDefault();
+            logoutModal.style.display = "flex";
+        });
+    }
     if (cancelLogoutBtn) cancelLogoutBtn.addEventListener("click", () => { if (logoutModal) logoutModal.style.display = "none"; });
+    window.addEventListener("click", event => {
+        if (logoutModal && event.target === logoutModal) logoutModal.style.display = "none";
+    });
     if (confirmLogoutBtn) {
         confirmLogoutBtn.addEventListener("click", () => {
-            sessionStorage.removeItem("activeAuth");
+            sessionStorage.clear();
             localStorage.removeItem("studentAuth");
             if (localStorage.getItem("activeRole") === "STUDENT") {
                 localStorage.removeItem("activeRole");
@@ -692,7 +765,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             setButtonLoading(confirmCancelBtn, true, "Xác nhận Hủy");
 
             try {
-                const res = await fetch(`http://localhost:5000/api/topics/cancel/${user.user_code}`, {
+                const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/cancel/${user.user_code}`, {
                     method: "DELETE",
                     headers: { "Authorization": `Bearer ${token}` }
                 });
@@ -729,6 +802,26 @@ document.addEventListener("DOMContentLoaded", async () => {
             const description = topicDescInput ? topicDescInput.value.trim() : "";
 
             hideMessage();
+
+            const enteredMemberCodes = selectedRole === "LEADER"
+                ? [
+                    { code: rawPartnerInput, input: partnerInput },
+                    { code: rawMember3Input, input: member3Input }
+                ]
+                : [{ code: rawLeaderInput, input: leaderNameEl }];
+            const incorrectlyCasedCode = enteredMemberCodes.find(({ code }) =>
+                code && code !== code.toUpperCase()
+            );
+            if (incorrectlyCasedCode) {
+                showMessage("error", `Mã sinh viên "${incorrectlyCasedCode.code}" không hợp lệ. Vui lòng kiểm tra và nhập đúng mã số sinh viên.`);
+                incorrectlyCasedCode.input?.focus();
+                return;
+            }
+
+            if (!registrationWindowOpen && (!isEditing || selectedRole === "MEMBER")) {
+                showMessage("error", "Hiện không trong thời hạn đăng ký đề tài. Vui lòng theo dõi thông báo của quản trị viên.");
+                return;
+            }
 
             // Ràng buộc dữ liệu Client-side
             if (selectedRole === "MEMBER" && !rawLeaderInput) {
@@ -783,7 +876,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             setButtonLoading(submitBtn, true, originalSubmitBtnText);
 
             try {
-                const res = await fetch("http://localhost:5000/api/topics/register", {
+                const res = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/register", {
                     method: "POST",
                     headers: { 
                         "Content-Type": "application/json",

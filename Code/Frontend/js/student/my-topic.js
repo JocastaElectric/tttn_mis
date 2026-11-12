@@ -1,6 +1,7 @@
 // Biến toàn cục lưu thông tin đề tài sau khi load
 let currentTopicData = null;
 let lecturerMilestones = [];
+let milestoneSubmissionHistory = [];
 let milestoneLoadError = false;
 const pendingMilestoneFiles = {};
 
@@ -34,6 +35,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     const auth = getAuthForRole("STUDENT") || { token: null, user: null };
     const user = auth?.user;
     const token = auth?.token;
+    document.addEventListener("click", async event => {
+        const link = event.target.closest(".protected-submission-file");
+        if (!link) return;
+        event.preventDefault();
+        try {
+            const response = await fetch(link.href, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error("Không thể tải tệp báo cáo.");
+            const fileUrl = URL.createObjectURL(await response.blob());
+            const downloadLink = document.createElement("a");
+            downloadLink.href = fileUrl;
+            downloadLink.download = link.dataset.fileName || "bao-cao";
+            downloadLink.click();
+            window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+        } catch (error) {
+            showAppNotification(error.message || "Không thể tải tệp báo cáo.");
+        }
+    });
 
     if (!user || user.role !== "STUDENT") {
         window.location.href = "../auth/index.html";
@@ -56,9 +76,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 3. SỰ KIỆN HỦY ĐĂNG KÝ ĐỀ TÀI
     const btnCancelTopic = document.getElementById("btnCancelTopic");
     if (btnCancelTopic) {
+        const isLeader = String(currentTopicData?.leader_code || '').toUpperCase() ===
+            String(user.user_code || '').toUpperCase();
+        btnCancelTopic.hidden = !isLeader;
         btnCancelTopic.addEventListener("click", async () => {
             if (!currentTopicData || !currentTopicData._id) {
                 showAppNotification("Bạn chưa có đề tài nào để hủy!");
+                return;
+            }
+            if (String(currentTopicData.leader_code || '').toUpperCase() !== String(user.user_code || '').toUpperCase()) {
+                showAppNotification("Chỉ Trưởng nhóm mới có thể hủy đề tài.");
                 return;
             }
 
@@ -67,10 +94,15 @@ document.addEventListener("DOMContentLoaded", async () => {
                 return;
             }
 
-            const confirmCancel = confirm("Bạn có chắc chắn muốn hủy đăng ký đề tài này để đăng ký đề tài khác không?");
+            const confirmCancel = await window.showConfirmDialog({
+                title: "Xác nhận hủy đăng ký đề tài",
+                message: "Bạn có chắc chắn muốn hủy đăng ký đề tài này để đăng ký đề tài khác không?",
+                confirmText: "Hủy đăng ký",
+                danger: true
+            });
             if (confirmCancel) {
                 try {
-                    const res = await fetch(`http://localhost:5000/api/topics/delete/${currentTopicData._id}`, {
+                    const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/delete/${currentTopicData._id}`, {
                         method: "DELETE",
                         headers: {
                             "Authorization": `Bearer ${token}`
@@ -144,7 +176,7 @@ async function getUserDisplayName(userCode) {
     
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const res = await fetch(`http://localhost:5000/api/auth/users/${userCode}`, {
+        const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${userCode}`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -169,7 +201,7 @@ async function getUserDisplayName(userCode) {
 async function loadMyTopic(userCode) {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const response = await fetch(`http://localhost:5000/api/topics/my-topic/${userCode}`, {
+        const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/my-topic/${userCode}`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -190,6 +222,7 @@ async function loadMyTopic(userCode) {
         if (data && data._id) {
             currentTopicData = data;
             await loadStudentMilestones();
+            await loadMilestoneSubmissionHistory(data._id);
             syncMilestoneCards();
 
             if (document.getElementById("topicTitle")) 
@@ -302,10 +335,28 @@ async function renderJoinRequestState(data) {
     disableAllMilestones("Đề tài sẽ hiển thị sau khi trưởng nhóm đăng ký.");
 }
 
+async function loadMilestoneSubmissionHistory(topicId) {
+    try {
+        const token = getAuthForRole("STUDENT")?.token;
+        const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/submissions/topic/${encodeURIComponent(topicId)}`, {
+            headers: { Authorization: `Bearer ${token || ""}` }
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || "Không thể tải lịch sử bài nộp.");
+        }
+        milestoneSubmissionHistory = result.data || [];
+    } catch (error) {
+        milestoneSubmissionHistory = [];
+        console.error("Lỗi tải lịch sử bài nộp:", error);
+        showAppNotification(error.message || "Không thể tải lịch sử bài nộp.");
+    }
+}
+
 async function loadStudentMilestones() {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const response = await fetch("http://localhost:5000/api/milestones/student", {
+        const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/milestones/student", {
             headers: { "Authorization": `Bearer ${token}` }
         });
         const result = await response.json();
@@ -374,7 +425,57 @@ function syncMilestoneCards() {
 // =========================================================
 // QUẢN LÝ QUY TRÌNH TIẾN ĐỘ TUẦN TỰ
 // =========================================================
-function renderSubmissionStatusTable(milestone, { submitted = false, draft = false, fileName = "", fileInfo = null, timeStr = "" } = {}) {
+function getSubmissionReviewStatus(submission) {
+    return submission?.review_status || (submission?.is_draft ? "DRAFT" : "PENDING_REVIEW");
+}
+
+function getSubmissionStatusLabel(status) {
+    return {
+        NOT_SUBMITTED: "Chưa nộp",
+        DRAFT: "Bản nháp",
+        PENDING_REVIEW: "Chờ giảng viên nhận xét",
+        APPROVED: "Đã duyệt",
+        REVISION_REQUESTED: "Yêu cầu nộp lại"
+    }[status] || "Chờ giảng viên nhận xét";
+}
+
+function renderMilestoneSubmissionHistory(step) {
+    const history = milestoneSubmissionHistory
+        .filter(item => Number(item.milestone || item.milestone_step) === step)
+        .sort((a, b) => new Date(b.submitted_at || b.createdAt) - new Date(a.submitted_at || a.createdAt));
+    if (!history.length) return "";
+
+    return `<section class="milestone-submission-history">
+        <h4><i class="fa-solid fa-clock-rotate-left"></i> Lịch sử nộp bài</h4>
+        <ol>${history.map((item, index) => {
+            const fileName = item.file_name || item.original_name || `Bài nộp Mốc ${step}`;
+            const storedName = item.stored_filename || String(item.file_path || "").split(/[\\/]/).pop();
+            const fileUrl = storedName ? `${window.APP_CONFIG.API_BASE_URL}/api/submissions/file/${encodeURIComponent(storedName)}` : "";
+            const status = getSubmissionReviewStatus(item);
+            const feedback = String(item.feedback || "").trim();
+            const submittedAt = item.submitted_at || item.createdAt;
+            return `<li>
+                <div class="history-submission-heading">
+                    <strong>${item.is_draft ? "Bản nháp" : `Lần nộp ${Number(item.attempt) || index + 1}`}</strong>
+                    <span class="history-status ${status.toLowerCase()}">${escapeHtml(getSubmissionStatusLabel(status))}</span>
+                </div>
+                <small>${submittedAt ? escapeHtml(new Date(submittedAt).toLocaleString("vi-VN")) : "Chưa có thời gian nộp"}</small>
+                <a class="protected-submission-file" href="${escapeHtml(fileUrl || "#")}" data-file-name="${escapeHtml(fileName)}">${escapeHtml(fileName)}</a>
+                ${feedback ? `<p><strong>Nhận xét:</strong> ${escapeHtml(feedback)}</p>` : ""}
+            </li>`;
+        }).join("")}</ol>
+    </section>`;
+}
+
+function renderSubmissionStatusTable(milestone, {
+    submitted = false,
+    draft = false,
+    fileName = "",
+    fileInfo = null,
+    timeStr = "",
+    reviewStatus = "",
+    feedback = ""
+} = {}) {
     const remainingMs = new Date(milestone?.endDate).getTime() - Date.now();
     const remainingSeconds = Math.floor(Math.abs(remainingMs) / 1000);
     const days = Math.floor(remainingSeconds / 86400);
@@ -397,26 +498,27 @@ function renderSubmissionStatusTable(milestone, { submitted = false, draft = fal
     }
 
     const storedFileId = fileInfo?.filename || String(fileInfo?.path || "").split(/[\\/]/).pop();
-    const fileHref = storedFileId ? `http://localhost:5000/uploads/${encodeURIComponent(storedFileId)}` : "";
+    const fileHref = storedFileId ? `${window.APP_CONFIG.API_BASE_URL}/api/submissions/file/${encodeURIComponent(storedFileId)}` : "";
     const escapedFileName = escapeHtml(fileName);
     const fileContent = submitted || draft
         ? `${fileHref
-            ? `<a class="submission-file-link" href="${escapeHtml(fileHref)}" target="_blank" rel="noopener" download>${escapedFileName}</a>`
+            ? `<a class="submission-file-link protected-submission-file" href="${escapeHtml(fileHref)}" data-file-name="${escapedFileName}">${escapedFileName}</a>`
             : escapedFileName} <span class="submission-file-date">${escapeHtml(timeStr)}</span>`
         : "Chưa có tập tin nào được nộp.";
+    const status = reviewStatus || (draft ? "DRAFT" : submitted ? "PENDING_REVIEW" : "NOT_SUBMITTED");
 
     return `
         <h3 class="submission-status-heading">Trạng thái bài nộp</h3>
         <table class="submission-status-table">
             <tbody>
-                <tr class="${submitted ? "submission-row-success" : ""}"><th>Trạng thái bài nộp</th><td>${submitted ? "Đã nộp để chấm điểm" : draft ? "Bản nháp (chưa nộp)" : "Chưa nộp"}</td></tr>
-                <tr><th>Trạng thái chấm điểm</th><td>Chưa chấm điểm</td></tr>
+                <tr class="${status === "APPROVED" ? "submission-row-success" : ""}"><th>Trạng thái bài nộp</th><td>${escapeHtml(getSubmissionStatusLabel(status))}</td></tr>
                 <tr class="${timeClass}"><th>Thời gian còn lại</th><td>${escapeHtml(timeRemaining)}</td></tr>
                 <tr><th>Chỉnh sửa lần cuối</th><td>${submitted || draft ? escapeHtml(timeStr) : "Chưa nộp lần nào."}</td></tr>
                 <tr class="submission-row-file"><th>Nộp tập tin</th><td>${fileContent}</td></tr>
-                <tr><th>Nhận xét</th><td>Chưa có nhận xét.</td></tr>
+                <tr><th>Nhận xét</th><td>${feedback ? escapeHtml(feedback) : "Chưa có nhận xét."}</td></tr>
             </tbody>
-        </table>`;
+        </table>
+        ${renderMilestoneSubmissionHistory(Number(milestone?.step))}`;
 }
 
 function renderMilestonesWorkflow(topicData) {
@@ -425,15 +527,33 @@ function renderMilestonesWorkflow(topicData) {
     lecturerMilestones.forEach(milestone => {
         const step = Number(milestone.step);
         if (!Number.isInteger(step) || step < 1) return;
-        const mFile = topicData[`milestone${step}_file`] || (topicData.milestones && topicData.milestones[step - 1]);
+        const history = milestoneSubmissionHistory
+            .filter(item => Number(item.milestone || item.milestone_step) === step)
+            .sort((a, b) => new Date(b.submitted_at || b.createdAt) - new Date(a.submitted_at || a.createdAt));
+        const draftSubmission = history.find(item => item.is_draft);
+        const latestSubmission = history.find(item => !item.is_draft);
+        const submission = draftSubmission || latestSubmission;
+        const mFile = submission ? {
+            name: submission.file_name || submission.original_name || `Bài nộp Mốc ${step}`,
+            path: submission.file_path,
+            filename: submission.stored_filename || String(submission.file_path || "").split(/[\\/]/).pop(),
+            submittedAt: submission.submitted_at || submission.createdAt,
+            isDraft: Boolean(submission.is_draft),
+            review_status: getSubmissionReviewStatus(submission),
+            feedback: submission.feedback || ""
+        } : topicData[`milestone${step}_file`] || (topicData.milestones && topicData.milestones[step - 1]);
 
         if (mFile && (mFile.name || mFile.original_name || mFile.filename)) {
             const fileName = mFile.name || mFile.original_name || mFile.filename;
             const timeStr = mFile.submittedAt ? new Date(mFile.submittedAt).toLocaleString('vi-VN') : "Đã nộp";
             if (mFile.isDraft) {
                 setMilestoneDraft(step, fileName, timeStr, mFile, milestone);
-            } else {
+            } else if (mFile.review_status === "REVISION_REQUESTED") {
+                setMilestoneRevisionRequested(step, fileName, timeStr, mFile, milestone);
+            } else if (mFile.review_status === "APPROVED") {
                 setMilestoneCompleted(step, fileName, timeStr, mFile, milestone);
+            } else {
+                setMilestoneUnderReview(step, fileName, timeStr, mFile, milestone);
             }
         } else {
             const now = new Date();
@@ -560,34 +680,40 @@ function setMilestoneCompleted(mIndex, fileName, timeStr, fileInfo, milestone) {
     const card = document.getElementById(`milestoneCard${mIndex}`);
     const badge = document.getElementById(`statusBadge${mIndex}`);
     const body = document.getElementById(`milestoneBody${mIndex}`);
-    const canEditSubmission = Boolean(milestone && (new Date() <= new Date(milestone.endDate) || milestone.allowLate));
-
     if (card) card.className = "milestone-card completed";
     if (badge) {
         badge.className = "m-badge green";
-        badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Đã hoàn thành';
+        badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Đã duyệt';
     }
     if (body) {
-        body.innerHTML = `
-            <div class="submission-actions">
-                <button type="button" class="submission-action-edit" id="editSubmissionM${mIndex}" ${canEditSubmission ? "" : "disabled"}><i class="fa-solid fa-pen-to-square"></i> Sửa bài làm</button>
-                <button type="button" class="submission-action-delete" id="deleteSubmissionM${mIndex}" ${canEditSubmission ? "" : "disabled"}><i class="fa-solid fa-trash-can"></i> Loại bỏ bài nộp</button>
-            </div>
-            ${canEditSubmission ? "" : '<small class="submission-closed-note">Đã hết thời gian chỉnh sửa bài nộp.</small>'}
-            ${renderSubmissionStatusTable(milestone, { submitted: true, fileName, fileInfo, timeStr })}`;
+        body.innerHTML = renderSubmissionStatusTable(milestone, {
+            submitted: true,
+            fileName,
+            fileInfo,
+            timeStr,
+            reviewStatus: "APPROVED",
+            feedback: fileInfo?.feedback || ""
+        });
 
         document.getElementById(`editSubmissionM${mIndex}`)?.addEventListener("click", () => {
             enableMilestoneUpload(mIndex, true, fileName, fileInfo, timeStr);
         });
 
         document.getElementById(`deleteSubmissionM${mIndex}`)?.addEventListener("click", async event => {
-            if (!currentTopicData?._id || !confirm(`Bạn có chắc muốn loại bỏ bài nộp Mốc ${mIndex}? Mốc này sẽ cần được nộp lại.`)) return;
+            if (!currentTopicData?._id) return;
+            const confirmed = await window.showConfirmDialog({
+                title: "Xác nhận xóa bài nộp",
+                message: `Bạn có chắc muốn loại bỏ bài nộp Mốc ${mIndex}? Mốc này sẽ cần được nộp lại.`,
+                confirmText: "Xóa bài nộp",
+                danger: true
+            });
+            if (!confirmed) return;
 
             const auth = getAuthForRole("STUDENT");
             const button = event.currentTarget;
             button.disabled = true;
             try {
-                const response = await fetch(`http://localhost:5000/api/topics/${currentTopicData._id}/milestone/${mIndex}/submission`, {
+                const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submission`, {
                     method: "DELETE",
                     headers: { Authorization: `Bearer ${auth?.token || ""}` }
                 });
@@ -604,11 +730,70 @@ function setMilestoneCompleted(mIndex, fileName, timeStr, fileInfo, milestone) {
     }
 }
 
+function setMilestoneUnderReview(mIndex, fileName, timeStr, fileInfo, milestone) {
+    const card = document.getElementById(`milestoneCard${mIndex}`);
+    const badge = document.getElementById(`statusBadge${mIndex}`);
+    const body = document.getElementById(`milestoneBody${mIndex}`);
+    if (card) card.className = "milestone-card active";
+    if (badge) {
+        badge.className = "m-badge warning";
+        badge.textContent = "Chờ nhận xét";
+    }
+    if (body) {
+        body.innerHTML = renderSubmissionStatusTable(milestone, {
+            submitted: true,
+            fileName,
+            fileInfo,
+            timeStr,
+            reviewStatus: "PENDING_REVIEW"
+        });
+    }
+}
+
+function setMilestoneRevisionRequested(mIndex, fileName, timeStr, fileInfo, milestone) {
+    const card = document.getElementById(`milestoneCard${mIndex}`);
+    const badge = document.getElementById(`statusBadge${mIndex}`);
+    const body = document.getElementById(`milestoneBody${mIndex}`);
+    const canResubmit = Boolean(milestone);
+    if (card) card.className = "milestone-card active";
+    if (badge) {
+        badge.className = "m-badge warning";
+        badge.textContent = "Cần nộp lại";
+    }
+    if (!body) return;
+
+    body.innerHTML = `
+        <div class="submission-actions">
+            <button type="button" class="submission-action-submit" id="resubmitM${mIndex}" ${canResubmit ? "" : "disabled"}>
+                <i class="fa-solid fa-rotate-right"></i> Nộp lại báo cáo
+            </button>
+        </div>
+        ${canResubmit ? "" : '<small class="submission-closed-note">Đã hết thời hạn nộp lại bài.</small>'}
+        ${renderSubmissionStatusTable(milestone, {
+            submitted: true,
+            fileName,
+            fileInfo,
+            timeStr,
+            reviewStatus: "REVISION_REQUESTED",
+            feedback: fileInfo?.feedback || ""
+        })}`;
+
+    document.getElementById(`resubmitM${mIndex}`)?.addEventListener("click", () => {
+        if (canResubmit) enableMilestoneUpload(mIndex);
+    });
+}
+
 function setMilestoneDraft(mIndex, fileName, timeStr, fileInfo, milestone) {
     const card = document.getElementById(`milestoneCard${mIndex}`);
     const badge = document.getElementById(`statusBadge${mIndex}`);
     const body = document.getElementById(`milestoneBody${mIndex}`);
-    const canEditSubmission = Boolean(milestone && (new Date() <= new Date(milestone.endDate) || milestone.allowLate));
+    const latestOfficialSubmission = milestoneSubmissionHistory
+        .filter(item => Number(item.milestone || item.milestone_step) === mIndex && !item.is_draft)
+        .sort((a, b) => new Date(b.submitted_at || b.createdAt) - new Date(a.submitted_at || a.createdAt))[0];
+    const resubmissionRequested = getSubmissionReviewStatus(latestOfficialSubmission) === "REVISION_REQUESTED";
+    const canEditSubmission = Boolean(milestone && (
+        new Date() <= new Date(milestone.endDate) || milestone.allowLate || resubmissionRequested
+    ));
 
     if (card) card.className = "milestone-card active";
     if (badge) {
@@ -631,7 +816,7 @@ function setMilestoneDraft(mIndex, fileName, timeStr, fileInfo, milestone) {
         const button = event.currentTarget;
         button.disabled = true;
         try {
-            const response = await fetch(`http://localhost:5000/api/topics/${currentTopicData._id}/milestone/${mIndex}/submit`, {
+            const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submit`, {
                 method: "POST",
                 headers: { Authorization: `Bearer ${auth?.token || ""}` }
             });
@@ -650,12 +835,19 @@ function setMilestoneDraft(mIndex, fileName, timeStr, fileInfo, milestone) {
     });
 
     document.getElementById(`deleteDraftM${mIndex}`)?.addEventListener("click", async event => {
-        if (!currentTopicData?._id || !confirm(`Bạn có chắc muốn loại bỏ bản nháp Mốc ${mIndex}?`)) return;
+        if (!currentTopicData?._id) return;
+        const confirmed = await window.showConfirmDialog({
+            title: "Xác nhận xóa bản nháp",
+            message: `Bạn có chắc muốn loại bỏ bản nháp Mốc ${mIndex}?`,
+            confirmText: "Xóa bản nháp",
+            danger: true
+        });
+        if (!confirmed) return;
         const auth = getAuthForRole("STUDENT");
         const button = event.currentTarget;
         button.disabled = true;
         try {
-            const response = await fetch(`http://localhost:5000/api/topics/${currentTopicData._id}/milestone/${mIndex}/submission`, {
+            const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submission`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${auth?.token || ""}` }
             });
@@ -688,6 +880,7 @@ function disableAllMilestones(reasonMsg) {
 
 function renderEmptyState() {
     currentTopicData = null;
+    milestoneSubmissionHistory = [];
     lecturerMilestones = [];
     milestoneLoadError = false;
     syncMilestoneCards();
@@ -849,7 +1042,11 @@ function initUploadEvents(mIndex) {
                 showAppNotification("Chưa đến thời gian bắt đầu nộp bài cho mốc này.");
                 return;
             }
-            if (now > new Date(milestone.endDate) && !milestone.allowLate) {
+            const latestOfficialSubmission = milestoneSubmissionHistory
+                .filter(item => Number(item.milestone || item.milestone_step) === mIndex && !item.is_draft)
+                .sort((a, b) => new Date(b.submitted_at || b.createdAt) - new Date(a.submitted_at || a.createdAt))[0];
+            const resubmissionRequested = getSubmissionReviewStatus(latestOfficialSubmission) === "REVISION_REQUESTED";
+            if (now > new Date(milestone.endDate) && !milestone.allowLate && !resubmissionRequested) {
                 showAppNotification("Đã quá hạn nộp bài cho mốc này.");
                 return;
             }
@@ -883,7 +1080,7 @@ function initUploadEvents(mIndex) {
                 formData.append("isDraft", "true");
 
                 // Gửi request đến Endpoint backend
-                const res = await fetch(`http://localhost:5000/api/topics/${currentTopicData._id}/upload-milestone/${mIndex}`, {
+                const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/upload-milestone/${mIndex}`, {
                     method: "POST",
                     headers: {
                         "Authorization": `Bearer ${token}`

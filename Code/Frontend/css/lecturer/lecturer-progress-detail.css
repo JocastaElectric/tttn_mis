@@ -123,8 +123,19 @@ body {
 
 .submissions-card { max-width: 1280px; margin: 0 auto; overflow: hidden; border: 1px solid #dbe5ef; box-shadow: 0 10px 24px rgba(30, 64, 95, .06); }
 .submissions-card .card-header { background: #fff; border-bottom: 1px solid #e5edf5; }
-.submissions-card .data-table { min-width: 760px; }
+.submissions-card .data-table { min-width: 1120px; }
 .submissions-card .data-table td, .submissions-card .data-table th { padding: 14px 16px; }
+.submission-review-status { display: inline-flex; padding: 5px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.submission-review-status.pending-review { background: #eff6ff; color: #1d4ed8; }
+.submission-review-status.approved { background: #dcfce7; color: #15803d; }
+.submission-review-status.revision-requested { background: #fff7ed; color: #c2410c; }
+.submission-review-actions { display: grid; min-width: 220px; gap: 8px; }
+.submission-review-feedback { width: 100%; min-height: 64px; padding: 8px; resize: vertical; border: 1px solid #cbd5e1; border-radius: 7px; color: #334155; font: inherit; font-size: 12px; }
+.submission-review-actions > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-submission-button { padding: 7px 9px; border: 0; border-radius: 6px; cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
+.review-submission-button.approve { background: #dcfce7; color: #15803d; }
+.review-submission-button.request-revision { background: #fff7ed; color: #c2410c; }
+.review-submission-button:disabled { cursor: wait; opacity: .6; }
 
 @media (max-width: 900px) {
     .milestone-tracker { grid-template-columns: repeat(2, minmax(0, 1fr)); }

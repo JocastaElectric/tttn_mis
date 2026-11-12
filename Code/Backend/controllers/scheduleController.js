@@ -1,6 +1,8 @@
 const { Meeting, Todo, AvailabilitySlot } = require("../models/Schedule");
 const Topic = require("../models/Topic");
+const User = require("../models/User");
 const Semester = require("../models/Semester"); // Import Model Semester để lấy cấu hình từ Admin
+const { notifyUsers, notifyTopicStudents } = require("../services/notificationService");
 const isValidDateOnly = value => {
     if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const date = new Date(`${value}T00:00:00.000Z`);
@@ -53,11 +55,12 @@ exports.getScheduleData = async (req, res) => {
         // --- TÍNH TOÁN TUẦN HỌC ĐỘNG TỪ DATABASE DƯỚI SỰ QUẢN LÝ CỦA ADMIN ---
         const activeSemester = await Semester.findOne({ is_active: true });
         
-        let currentWeek = 1;
-        let totalWeeks = 15;
+        let currentWeek = 0;
+        let totalWeeks = 0;
 
         if (activeSemester && activeSemester.start_date) {
             totalWeeks = activeSemester.total_weeks || 15;
+            currentWeek = 1;
             
             const startDate = new Date(activeSemester.start_date);
             const today = new Date();
@@ -92,7 +95,8 @@ exports.getScheduleData = async (req, res) => {
             stats: {
                 upcoming_meetings: upcomingMeetings,
                 current_week: currentWeek, // Tuần hiện tại tính động từ ngày Admin chọn
-                total_weeks: totalWeeks   // Tổng số tuần từ cấu hình Admin
+                total_weeks: totalWeeks,   // Tổng số tuần từ cấu hình Admin
+                semester_name: activeSemester?.name || null
             },
             meetings,
             todos
@@ -105,7 +109,23 @@ exports.getScheduleData = async (req, res) => {
 // 2. Sinh viên đăng ký lịch hẹn mới với GVHD (Mặc định PENDING)
 exports.createMeeting = async (req, res) => {
     try {
-        const { topic_id, student_code, lecturer_code, title, meeting_date, time_start, time_end, type, location, availability_id } = req.body;
+        const { topic_id, title, meeting_date, time_start, time_end, type, location, availability_id } = req.body;
+        const studentCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !studentCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ sinh viên mới được đăng ký lịch hẹn.' });
+        }
+        const escapedStudentCode = studentCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const topic = await Topic.findOne({
+            _id: topic_id,
+            status: 'APPROVED',
+            $or: [
+                { leader_code: new RegExp(`^${escapedStudentCode}$`, 'i') },
+                { member2_code: new RegExp(`^${escapedStudentCode}$`, 'i') },
+                { member3_code: new RegExp(`^${escapedStudentCode}$`, 'i') }
+            ]
+        }).select('lecturer_code leader_code member2_code member3_code title');
+        if (!topic) return res.status(403).json({ success: false, message: 'Bạn không có quyền đặt lịch cho đề tài này.' });
+        const lecturer_code = topic.lecturer_code;
 
         let slot = null;
         if (availability_id) {
@@ -125,7 +145,7 @@ exports.createMeeting = async (req, res) => {
 
         const newMeeting = new Meeting({
             topic_id,
-            student_code,
+            student_code: studentCode,
             lecturer_code,
             title,
             meeting_date: meetingDate,
@@ -138,6 +158,11 @@ exports.createMeeting = async (req, res) => {
         });
 
         await newMeeting.save();
+        await notifyUsers([lecturer_code], {
+            title: 'Yêu cầu lịch hẹn mới',
+            content: `Nhóm đề tài "${topic.title}" đã gửi yêu cầu lịch hẹn "${title}" vào ${new Date(meetingDate).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}, ${meetingStart}-${meetingEnd}.`,
+            eventKey: `meeting-request:${newMeeting._id}`
+        });
         res.status(201).json({ 
             success: true,
             message: "Đăng ký lịch hẹn thành công! Đang chờ giảng viên duyệt.", 
@@ -397,12 +422,23 @@ exports.getLecturerMeetings = async (req, res) => {
 // 6. Giảng viên chủ động tạo lịch họp với nhóm (Tự động APPROVED)
 exports.createMeetingByLecturer = async (req, res) => {
     try {
-        const { topic_id, student_code, lecturer_code, title, meeting_date, time_start, time_end, type, location, notes } = req.body;
+        const { topic_id, title, meeting_date, time_start, time_end, type, location, notes } = req.body;
+        const lecturerCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' || !lecturerCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ giảng viên mới được tạo lịch hẹn.' });
+        }
+        const escapedLecturerCode = lecturerCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const topic = await Topic.findOne({
+            _id: topic_id,
+            lecturer_code: new RegExp(`^${escapedLecturerCode}$`, 'i'),
+            status: 'APPROVED'
+        }).select('lecturer_code leader_code member2_code member3_code title');
+        if (!topic) return res.status(403).json({ success: false, message: 'Bạn không được phân công hướng dẫn đề tài này.' });
 
         const newMeeting = new Meeting({
             topic_id,
-            student_code,
-            lecturer_code,
+            student_code: topic.leader_code,
+            lecturer_code: lecturerCode,
             title,
             meeting_date,
             time_start,
@@ -416,6 +452,11 @@ exports.createMeetingByLecturer = async (req, res) => {
 
         await newMeeting.save();
         await newMeeting.populate("topic_id", "title group_code");
+        await notifyTopicStudents(topic, {
+            title: 'Giảng viên đã tạo lịch hẹn',
+            content: `Giảng viên đã tạo lịch "${title}" cho đề tài "${topic.title}" vào ${new Date(meeting_date).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}, ${time_start}-${time_end}.`,
+            eventKey: `meeting-created:${newMeeting._id}`
+        });
 
         res.status(201).json({
             success: true,
@@ -432,24 +473,52 @@ exports.updateMeetingStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { status, notes } = req.body; // status: "APPROVED" | "CANCELLED" | "COMPLETED"
+        const lecturerCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' ||
+            !['APPROVED', 'CANCELLED', 'COMPLETED'].includes(status)) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền cập nhật lịch hẹn này.' });
+        }
 
-        const updatedMeeting = await Meeting.findByIdAndUpdate(
-            id,
-            { 
-                status,
-                ...(notes !== undefined && { notes }) // Nếu từ chối/báo bận có gửi kèm lý do thì lưu vào notes
-            },
-            { new: true }
-        ).populate("topic_id", "title group_code");
+        const updatedMeeting = await Meeting.findOne({
+            _id: id,
+            lecturer_code: new RegExp(`^${lecturerCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+        });
 
         if (!updatedMeeting) {
             return res.status(404).json({ success: false, message: "Không tìm thấy buổi họp!" });
         }
+        const previousStatus = updatedMeeting.status;
+        updatedMeeting.status = status;
+        if (notes !== undefined) updatedMeeting.notes = notes;
+        await updatedMeeting.save();
+        await updatedMeeting.populate("topic_id", "title group_code");
 
         let msg = "Đã cập nhật trạng thái lịch họp!";
         if (status === "APPROVED") msg = "Đã đồng ý lịch hẹn!";
         if (status === "CANCELLED") msg = "Đã hủy / từ chối lịch hẹn!";
         if (status === "COMPLETED") msg = "Đã đánh dấu hoàn thành buổi họp!";
+        if (previousStatus !== status) {
+            const lecturer = await User.findOne({
+                user_code: new RegExp(`^${lecturerCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+                role: 'LECTURER'
+            }).select('full_name').lean();
+            const topic = updatedMeeting.topic_id?._id
+                ? await Topic.findById(updatedMeeting.topic_id._id)
+                    .select('leader_code member2_code member3_code title')
+                    .lean()
+                : null;
+            const statusText = status === 'APPROVED' ? 'đã được xác nhận' :
+                status === 'CANCELLED' ? 'đã bị hủy hoặc từ chối' : 'đã hoàn thành';
+            await notifyTopicStudents(topic || { leader_code: updatedMeeting.student_code }, {
+                title: status === 'APPROVED' ? 'Lịch hẹn đã được xác nhận' :
+                    status === 'CANCELLED' ? 'Lịch hẹn đã thay đổi' : 'Buổi hẹn đã hoàn thành',
+                content: `Lịch "${updatedMeeting.title}" ${statusText} (${new Date(updatedMeeting.meeting_date).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}, ${updatedMeeting.time_start}-${updatedMeeting.time_end}).${updatedMeeting.notes ? ` Ghi chú: ${updatedMeeting.notes}` : ''}`,
+                eventKey: `meeting-status:${updatedMeeting._id}:${previousStatus}:${status}:${updatedMeeting.updatedAt.getTime()}`,
+                priority: status === 'CANCELLED' ? 'warning' : 'info',
+                type: 'LECTURER',
+                senderName: lecturer?.full_name || `Giảng viên ${lecturerCode}`
+            });
+        }
 
         res.status(200).json({ success: true, message: msg, data: updatedMeeting });
     } catch (error) {
@@ -461,11 +530,27 @@ exports.updateMeetingStatus = async (req, res) => {
 exports.deleteMeeting = async (req, res) => {
     try {
         const { id } = req.params;
-        const deletedMeeting = await Meeting.findByIdAndDelete(id);
+        const lecturerCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' || !lecturerCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ giảng viên mới được xóa lịch hẹn.' });
+        }
+        const deletedMeeting = await Meeting.findOneAndDelete({
+            _id: id,
+            lecturer_code: new RegExp(`^${lecturerCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+        });
 
         if (!deletedMeeting) {
             return res.status(404).json({ success: false, message: "Không tìm thấy lịch họp để xóa!" });
         }
+        const topic = await Topic.findById(deletedMeeting.topic_id)
+            .select('leader_code member2_code member3_code title')
+            .lean();
+        await notifyTopicStudents(topic || { leader_code: deletedMeeting.student_code }, {
+            title: 'Lịch hẹn đã bị xóa',
+            content: `Lịch "${deletedMeeting.title}" vào ${new Date(deletedMeeting.meeting_date).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}, ${deletedMeeting.time_start}-${deletedMeeting.time_end} đã bị giảng viên xóa.`,
+            eventKey: `meeting-deleted:${deletedMeeting._id}`,
+            priority: 'warning'
+        });
 
         res.status(200).json({ success: true, message: "Đã xóa lịch họp khỏi hệ thống!" });
     } catch (error) {

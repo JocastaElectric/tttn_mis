@@ -1,5 +1,5 @@
 // Cấu hình URL Backend API
-const API_BASE_URL = 'http://localhost:5000/api/topics';
+const API_BASE_URL = window.APP_CONFIG.API_BASE_URL + '/api/topics';
 
 // Biến toàn cục lưu dữ liệu đề tài tải về từ Server
 let allTopicsData = {
@@ -45,15 +45,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const userCodeEl = document.getElementById("userCode");
     if (userNameEl) userNameEl.textContent = user.full_name || user.fullName;
     if (userCodeEl) userCodeEl.textContent = lecturerCode;
-
-    // Xử lý Đăng xuất
-    const logoutBtn = document.getElementById("logoutBtn");
-    if (logoutBtn) {
-        logoutBtn.addEventListener("click", () => {
-            localStorage.clear();
-            window.location.href = "../auth/index.html";
-        });
-    }
 
     // 2. TẢI DỮ LIỆU THẬT TỪ SERVER
     loadLecturerTopics(lecturerCode, token);

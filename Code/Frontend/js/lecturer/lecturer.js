@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     displayUserFromStorage(user);
 
     try {
-        const response = await fetch("http://localhost:5000/api/v1/lecturer/dashboard", {
+        const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/v1/lecturer/dashboard", {
             method: "GET",
             headers: {
                 "Authorization": `Bearer ${token}`,
@@ -152,40 +152,6 @@ function initUIEvents() {
             item.classList.add("active");
         });
     });
-
-    const logoutBtn = document.getElementById("logoutBtn");
-    const logoutModal = document.getElementById("logoutModal");
-    const cancelLogoutBtn = document.getElementById("cancelLogoutBtn");
-    const confirmLogoutBtn = document.getElementById("confirmLogoutBtn");
-
-    if (logoutBtn) {
-        logoutBtn.onclick = function(e) {
-            e.preventDefault();
-            if (logoutModal) {
-                logoutModal.style.display = "flex";
-            } else {
-                handleLogout();
-            }
-        };
-    }
-
-    if (cancelLogoutBtn) {
-        cancelLogoutBtn.onclick = function() {
-            if (logoutModal) logoutModal.style.display = "none";
-        };
-    }
-
-    if (confirmLogoutBtn) {
-        confirmLogoutBtn.onclick = function() {
-            handleLogout();
-        };
-    }
-
-    window.onclick = function(e) {
-        if (logoutModal && e.target === logoutModal) {
-            logoutModal.style.display = "none";
-        }
-    };
 }
 
 function renderKPIs(stats) {

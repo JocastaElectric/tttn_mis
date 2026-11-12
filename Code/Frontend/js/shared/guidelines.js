@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const documentGrid = document.getElementById("documentGrid");
     const noDocResult = document.getElementById("noDocResult");
     const allDocumentsCount = document.getElementById("allDocumentsCount");
-    const API_BASE = "http://localhost:5000";
+    const API_BASE = window.APP_CONFIG.API_BASE_URL + "";
     const authHeaders = { Authorization: `Bearer ${auth.token}` };
 
     const getCategoryKey = (category) => {

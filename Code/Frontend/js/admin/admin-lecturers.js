@@ -33,7 +33,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function fetchLecturers() {
         try {
-            const response = await fetch("http://localhost:5000/api/auth/lecturers");
+            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/lecturers", {
+                headers: { Authorization: `Bearer ${getAdminToken() || ""}` }
+            });
             const result = await response.json();
 
             if (!response.ok || !result || (!Array.isArray(result) && !Array.isArray(result.data))) {
@@ -157,13 +159,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 let response;
                 if (currentEditingId) {
-                    response = await fetch(`http://localhost:5000/api/auth/lecturers/${currentEditingId}`, {
+                    response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/lecturers/${currentEditingId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
                 } else {
-                    response = await fetch("http://localhost:5000/api/auth/lecturers", {
+                    response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/lecturers", {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
@@ -207,7 +209,13 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".delete-btn").forEach(btn => {
             btn.onclick = async (e) => {
                 const id = e.currentTarget.getAttribute("data-id");
-                if (!confirm(`Bạn có chắc muốn xóa giảng viên mã ${id}?`)) return;
+                const confirmed = await window.showConfirmDialog({
+                    title: "Xác nhận xóa giảng viên",
+                    message: `Bạn có chắc chắn muốn xóa giảng viên mã ${id}?`,
+                    confirmText: "Xóa giảng viên",
+                    danger: true
+                });
+                if (!confirmed) return;
 
                 const token = getAdminToken();
                 if (!token) {
@@ -216,7 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
 
                 try {
-                    const response = await fetch(`http://localhost:5000/api/auth/lecturers/${encodeURIComponent(id)}`, {
+                    const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/lecturers/${encodeURIComponent(id)}`, {
                         method: "DELETE",
                         headers: { "Authorization": `Bearer ${token}` }
                     });
@@ -249,5 +257,6 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
+    window.addEventListener("users-imported", fetchLecturers);
     fetchLecturers();
 });

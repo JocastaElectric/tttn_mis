@@ -2,9 +2,28 @@ const jwt = require('jsonwebtoken');
 const ActivityLog = require('../models/ActivityLog');
 
 const secretKey = process.env.JWT_SECRET || 'secret_key_tttn_2026';
+const ignoredPollingPaths = [
+    /^\/api\/notifications\/(?:lecturer\/)?[^/]+$/,
+    /^\/api\/topics\/lecturer\/[^/]+\/pending-review$/
+];
 
-const getActionType = (method) => {
-    switch (method) {
+const shouldIgnoreRequest = (req) => {
+    if (!req.path.startsWith('/api/') || req.path.startsWith('/api/activity-logs')) {
+        return true;
+    }
+
+    if (req.method !== 'GET') return false;
+
+    const path = req.originalUrl.split('?')[0];
+    return ignoredPollingPaths.some(pattern => pattern.test(path));
+};
+
+const getActionType = req => {
+    const path = req.originalUrl.split('?')[0];
+    if (['/api/auth/login', '/api/auth/forgot-password'].includes(path)) return 'AUTH';
+    if (path === '/api/auth/change-password') return 'UPDATE';
+
+    switch (req.method) {
         case 'POST': return 'CREATE';
         case 'PUT':
         case 'PATCH': return 'UPDATE';
@@ -27,29 +46,40 @@ const parseUserFromToken = (req) => {
 };
 
 const getActionText = (req) => {
-    const normalized = `${req.method} ${req.originalUrl}`;
-    if (req.originalUrl.startsWith('/api/auth/login')) {
+    const path = req.originalUrl.split('?')[0];
+    if (path === '/api/auth/login') {
         return 'Đăng nhập hệ thống';
     }
-    if (req.originalUrl.startsWith('/api/auth/lecturers')) {
-        return 'Xem danh sách Giảng viên';
+    if (path === '/api/auth/forgot-password') {
+        return 'Yêu cầu đặt lại mật khẩu';
     }
-    if (req.originalUrl.startsWith('/api/topics/admin/assign-lecturer')) {
+    if (path === '/api/auth/students/export') return 'Xuất danh sách sinh viên';
+    if (path === '/api/auth/lecturers/export') return 'Xuất danh sách giảng viên';
+    if (path === '/api/auth/students' && req.method === 'GET') return 'Xem danh sách sinh viên';
+    if (path === '/api/auth/lecturers' && req.method === 'GET') return 'Xem danh sách giảng viên';
+    if (path === '/api/auth/students' && req.method === 'POST') return 'Thêm sinh viên';
+    if (path === '/api/auth/lecturers' && req.method === 'POST') return 'Thêm giảng viên';
+    if (/^\/api\/auth\/students\/[^/]+$/.test(path) && req.method === 'PUT') return 'Cập nhật sinh viên';
+    if (/^\/api\/auth\/students\/[^/]+$/.test(path) && req.method === 'DELETE') return 'Xóa sinh viên';
+    if (/^\/api\/auth\/lecturers\/[^/]+$/.test(path) && req.method === 'PUT') return 'Cập nhật giảng viên';
+    if (/^\/api\/auth\/lecturers\/[^/]+$/.test(path) && req.method === 'DELETE') return 'Xóa giảng viên';
+    if (path.startsWith('/api/topics/admin/assign-lecturer')) {
         return 'Phân công Giảng viên cho đề tài';
     }
-    return normalized;
+    return `${req.method} ${path}`;
 };
 
 module.exports = (req, res, next) => {
-    if (!req.path.startsWith('/api/') || req.path.startsWith('/api/activity-logs')) {
+    if (shouldIgnoreRequest(req)) {
         return next();
     }
 
     const decodedUser = parseUserFromToken(req);
-    const userCode = decodedUser?.user_code || req.body?.user_code || req.body?.user?.user_code || null;
-    const userName = decodedUser?.full_name || decodedUser?.fullname || decodedUser?.name || req.body?.full_name || req.body?.user?.full_name || 'Khách';
-    const userEmail = decodedUser?.email || req.body?.email || null;
+    const userCode = decodedUser?.user_code || null;
+    const userName = decodedUser?.full_name || decodedUser?.fullname || decodedUser?.name || userCode || 'Khách';
+    const userEmail = decodedUser?.email || null;
     const userRole = decodedUser?.role ? String(decodedUser.role).toUpperCase() : 'GUEST';
+    const url = req.originalUrl.split('?')[0];
 
     res.on('finish', async () => {
         try {
@@ -58,17 +88,14 @@ module.exports = (req, res, next) => {
                 user_name: userName,
                 email: userEmail,
                 role: userRole,
-                actionType: getActionType(req.method),
+                actionType: getActionType(req),
                 actionText: getActionText(req),
                 method: req.method,
-                url: req.originalUrl,
+                url,
                 statusCode: res.statusCode,
                 ip: req.ip || req.connection?.remoteAddress || null,
                 userAgent: req.headers['user-agent'] || null,
-                metadata: {
-                    query: req.query || {},
-                    body: req.method !== 'GET' ? req.body || {} : {}
-                }
+                metadata: {}
             });
             await log.save();
         } catch (error) {

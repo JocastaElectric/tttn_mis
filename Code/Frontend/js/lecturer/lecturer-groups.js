@@ -1,7 +1,7 @@
 // LƯU Ý: Đang để mặc định '/api/topics' để hiển thị ngay đề tài bạn vừa duyệt.
-// Khi nào Backend làm xong API cho bảng Group thì đổi thành: 'http://localhost:5000/api/groups'
-const API_BASE_URL = 'http://localhost:5000/api/topics';
-const NOTIFICATION_API_URL = 'http://localhost:5000/api/notifications';
+// Khi nào Backend làm xong API cho bảng Group thì đổi thành: window.APP_CONFIG.API_BASE_URL + '/api/groups'
+const API_BASE_URL = window.APP_CONFIG.API_BASE_URL + '/api/topics';
+const NOTIFICATION_API_URL = window.APP_CONFIG.API_BASE_URL + '/api/notifications';
 let allGroupsData = [];
 
 let notifyRecipients = [];
@@ -163,14 +163,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // 7. XỬ LÝ ĐĂNG XUẤT
-    const logoutBtn = document.getElementById("logoutBtn");
-    if (logoutBtn) {
-        logoutBtn.addEventListener("click", () => {
-            localStorage.removeItem("user");
-            window.location.href = "../auth/index.html";
-        });
-    }
 });
 
 /**
@@ -183,7 +175,10 @@ async function loadLecturedGroups(lecturerCode) {
     }
 
     try {
-        const response = await fetch(`${API_BASE_URL}/lecturer/${lecturerCode}`);
+        const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
+        const response = await fetch(`${API_BASE_URL}/lecturer/${lecturerCode}`, {
+            headers: { Authorization: `Bearer ${auth?.token || ''}` }
+        });
         const result = await response.json();
 
         // Debug: Kiểm tra dữ liệu thô trả về từ máy chủ trong F12 -> Console
@@ -245,7 +240,16 @@ async function getUserDisplayByCode(userCode) {
     }
 
     try {
-        const response = await fetch(`http://localhost:5000/api/auth/users/${encodeURIComponent(userCode)}`);
+        let auth = null;
+        try {
+            auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
+        } catch {
+            auth = null;
+        }
+        if (!auth?.token) throw new Error("Phiên đăng nhập không hợp lệ.");
+        const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${encodeURIComponent(userCode)}`, {
+            headers: { Authorization: `Bearer ${auth.token}` }
+        });
         const data = await response.json();
         const result = data && data.full_name
             ? { full_name: data.full_name, user_code: data.user_code || userCode }

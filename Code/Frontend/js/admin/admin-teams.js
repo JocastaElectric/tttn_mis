@@ -1,4 +1,15 @@
 document.addEventListener("DOMContentLoaded", async () => {
+    let adminAuth = null;
+    try {
+        adminAuth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
+    } catch (error) {
+        sessionStorage.removeItem("activeAuth");
+    }
+    if (!adminAuth?.token || adminAuth.user?.role !== "ADMIN") {
+        window.location.href = "../auth/index.html";
+        return;
+    }
+    const authHeaders = { Authorization: `Bearer ${adminAuth.token}` };
 
     let lecturerList = [];
     let teamList = [];
@@ -24,7 +35,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     async function fetchLecturers() {
         try {
-            const response = await fetch("http://localhost:5000/api/auth/lecturers");
+            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/lecturers", {
+                headers: authHeaders
+            });
             const result = await response.json();
             const rawList = Array.isArray(result) ? result : (result.data || []);
 
@@ -41,7 +54,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     async function fetchTeams() {
         try {
-            const response = await fetch("http://localhost:5000/api/topics/admin/all");
+            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/admin/all", {
+                headers: authHeaders
+            });
             const result = await response.json();
 
             if (!response.ok || !result || !Array.isArray(result.data)) {
@@ -178,10 +193,11 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
 
             try {
-                const res = await fetch(`http://localhost:5000/api/topics/admin/assign-lecturer/${selectedTeamId}`, {
+                const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/admin/assign-lecturer/${selectedTeamId}`, {
                     method: "PATCH",
                     headers: {
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        ...authHeaders
                     },
                     body: JSON.stringify({ lecturer_code: selectedLecturer })
                 });

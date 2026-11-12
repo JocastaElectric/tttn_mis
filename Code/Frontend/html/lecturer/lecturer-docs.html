@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="../../css/lecturer/lecturer-docs.css?v=20260908c">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
+    <link rel="stylesheet" href="../../css/common/lecturer-logout-modal.css">
+    <link rel="stylesheet" href="../../css/common/confirm-dialog.css">
     <link rel="stylesheet" href="../../css/lecturer/lecturer-pending-alert.css">
 </head>
 <body>
@@ -207,10 +209,25 @@
         </div>
     </div>
 
+    <div id="logoutModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-icon"><i class="fa-solid fa-right-from-bracket"></i></div>
+            <h3>Xác nhận đăng xuất</h3>
+            <p>Bạn có chắc chắn muốn thoát khỏi hệ thống giảng viên không?</p>
+            <div class="modal-actions">
+                <button type="button" id="cancelLogoutBtn" class="btn-cancel">Hủy bỏ</button>
+                <button type="button" id="confirmLogoutBtn" class="btn-confirm">Đăng xuất</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../../js/config.js"></script>
+    <script src="../../js/common/confirm-dialog.js"></script>
     <script src="../../js/common/app-notifications.js?v=20260908e"></script>
     <script src="../../js/common/notif-badge.js"></script>
     <script src="../../js/lecturer/lecturer-pending-alert.js"></script>
     <script src="../../js/lecturer/lecturer-docs.js?v=20260908d"></script>
     <script src="../../js/common/sidebar-toggle.js"></script>
+    <script src="../../js/common/lecturer-logout-dialog.js"></script>
 </body>
 </html>

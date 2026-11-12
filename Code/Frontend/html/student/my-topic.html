@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="../../css/student/my-topic.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
+    <link rel="stylesheet" href="../../css/common/student-logout-modal.css">
+    <link rel="stylesheet" href="../../css/common/confirm-dialog.css">
 </head>
 <body>
 
@@ -190,17 +192,19 @@
     <!-- MODAL ĐĂNG XUẤT -->
     <div id="logoutModal" class="modal-overlay">
         <div class="modal-box">
-            <div class="modal-icon warning"><i class="fa-solid fa-right-from-bracket"></i></div>
+            <div class="modal-icon"><i class="fa-solid fa-right-from-bracket"></i></div>
             <h3>Xác nhận đăng xuất</h3>
-            <p>Bạn có chắc chắn muốn kết thúc phiên làm việc hiện tại không?</p>
+            <p>Bạn có chắc chắn muốn thoát khỏi phiên làm việc này không?</p>
             <div class="modal-actions">
-                <button id="cancelLogoutBtn" class="btn-cancel">Hủy bỏ</button>
-                <button id="confirmLogoutBtn" class="btn-confirm">Đăng xuất</button>
+                <button type="button" id="cancelLogoutBtn" class="btn-cancel">Hủy bỏ</button>
+                <button type="button" id="confirmLogoutBtn" class="btn-confirm">Đăng xuất</button>
             </div>
         </div>
     </div>
 
     <!-- JS APP -->
+    <script src="../../js/config.js"></script>
+    <script src="../../js/common/confirm-dialog.js"></script>
     <script src="../../js/common/notif-badge.js"></script>
     <script src="../../js/student/my-topic.js"></script>
     <script src="../../js/common/app-notifications.js?v=20260908e"></script>

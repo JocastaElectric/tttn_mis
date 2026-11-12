@@ -19,9 +19,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (userCodeEl) userCodeEl.textContent = user.user_code || "GV";
 
     // Địa chỉ API
-    const API_BASE_URL = "http://localhost:5000/api/schedule";
-    const API_TOPICS_URL = "http://localhost:5000/api/topics";
-    const API_MILESTONES_URL = "http://localhost:5000/api/milestones";
+    const API_BASE_URL = window.APP_CONFIG.API_BASE_URL + "/api/schedule";
+    const API_TOPICS_URL = window.APP_CONFIG.API_BASE_URL + "/api/topics";
+    const API_MILESTONES_URL = window.APP_CONFIG.API_BASE_URL + "/api/milestones";
 
     // Hàm tạo Header có kèm Token xác thực (JWT)
     const getAuthHeaders = () => ({
@@ -648,7 +648,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 if (mData && mData.submitted) {
                     completedCount++;
-                    const downloadPath = mData.file_path ? `http://localhost:5000/${mData.file_path}` : '#';
+                    const downloadPath = mData.file_path ? `${window.APP_CONFIG.API_BASE_URL}/${mData.file_path}` : '#';
                     return `
                         <td style="text-align: center;">
                             <a href="${downloadPath}" target="_blank" title="Tải file: ${mData.file_name || 'Bài nộp'}" 
@@ -710,16 +710,6 @@ document.addEventListener("DOMContentLoaded", () => {
             e.target.style.display = "none";
         }
     });
-
-    // Đăng xuất
-    const logoutBtn = document.getElementById("logoutBtn");
-    if (logoutBtn) {
-        logoutBtn.addEventListener("click", () => {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            window.location.href = "../auth/index.html";
-        });
-    }
 
     // =========================================================
     // KHỞI ĐỘNG: Tải lịch họp và Ma trận tiến độ từ Backend

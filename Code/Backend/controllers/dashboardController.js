@@ -4,6 +4,7 @@ const Topic = require('../models/Topic');
 const LecturerTopic = require('../models/LecturerTopic');
 const Submission = require('../models/Submission');
 const Notification = require('../models/Notification');
+const Semester = require('../models/Semester');
 
 // Kết nối linh hoạt vào Collection 'meetings'
 const MeetingModel = mongoose.models.Meeting || 
@@ -36,19 +37,58 @@ const matchesStatus = (value, patterns) => {
     });
 };
 
+const getRegistrationRange = semester => {
+    if (!semester?.registration_start_date || !semester?.registration_end_date) return null;
+
+    const startDate = new Date(semester.registration_start_date);
+    const endDate = new Date(semester.registration_end_date);
+    const start = semester.registration_window_has_time
+        ? startDate
+        : new Date(`${startDate.toISOString().slice(0, 10)}T00:00:00+07:00`);
+    const end = semester.registration_window_has_time
+        ? endDate
+        : new Date(`${endDate.toISOString().slice(0, 10)}T23:59:59.999+07:00`);
+
+    return start <= end ? { start, end } : null;
+};
+
+const getVietnamMonthParts = date => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit'
+    }).formatToParts(date);
+    return {
+        year: Number(parts.find(part => part.type === 'year').value),
+        month: Number(parts.find(part => part.type === 'month').value)
+    };
+};
+
 exports.getAdminDashboardStats = async (req, res) => {
     try {
-        const { semester } = req.query;
-
-        // Bộ lọc học kỳ (nếu có) chỉ áp dụng khi Topic collection thực sự có trường semester
+        const semesterId = typeof req.query.semester === 'string' ? req.query.semester : '';
+        let selectedSemester = null;
+        let registrationRange = null;
         const topicFilter = {};
-        if (semester) {
-            const hasSemesterField = await Topic.exists({ semester: { $exists: true, $ne: null } });
-            if (hasSemesterField) {
-                topicFilter.semester = semester;
-            } else {
-                console.warn("Dashboard Admin: semester query được bỏ qua vì Topic collection không có trường semester.");
+
+        if (semesterId && semesterId !== 'all') {
+            if (!mongoose.Types.ObjectId.isValid(semesterId)) {
+                return res.status(400).json({ success: false, message: 'Học kỳ được chọn không hợp lệ.' });
             }
+
+            selectedSemester = await Semester.findById(semesterId).lean();
+            if (!selectedSemester) {
+                return res.status(404).json({ success: false, message: 'Không tìm thấy học kỳ được chọn.' });
+            }
+
+            registrationRange = getRegistrationRange(selectedSemester);
+            if (!registrationRange) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Học kỳ này chưa được cấu hình thời hạn đăng ký hợp lệ.'
+                });
+            }
+            topicFilter.createdAt = { $gte: registrationRange.start, $lte: registrationRange.end };
         }
 
         const pendingStatusRegex = /^(pending|cho_duyet|cho phe duyet|chờ duyệt|chờ phe duyet|0)$/i;
@@ -57,6 +97,7 @@ exports.getAdminDashboardStats = async (req, res) => {
         const revisionStatusRegex = /^(need_revision|revision|yeu_cau_sua|yêu cầu sửa|2)$/i;
 
         // 1. Thống kê KPI cơ bản
+        const includeGlobalPool = !registrationRange;
         const [
             totalStudents,
             totalLecturers,
@@ -77,21 +118,24 @@ exports.getAdminDashboardStats = async (req, res) => {
             Topic.countDocuments({ ...topicFilter, status: { $regex: pendingStatusRegex } }),
             Topic.countDocuments({ ...topicFilter, status: { $regex: rejectedStatusRegex } }),
             Topic.countDocuments({ ...topicFilter, status: { $regex: revisionStatusRegex } }),
-            LecturerTopic.countDocuments({
+            includeGlobalPool ? LecturerTopic.countDocuments({
                 $or: [
                     { status: { $regex: approvedStatusRegex } },
                     { status: 'PENDING' }
                 ]
-            }),
-            LecturerTopic.countDocuments({ status: { $regex: rejectedStatusRegex } }),
+            }) : 0,
+            includeGlobalPool ? LecturerTopic.countDocuments({ status: { $regex: rejectedStatusRegex } }) : 0,
             Topic.find(topicFilter).lean(),
-            LecturerTopic.find({}).lean()
+            includeGlobalPool ? LecturerTopic.find({}).lean() : []
         ]);
 
         const totalPendingFromTopic = allTopics.filter(item => matchesStatus(item.status, [pendingStatusRegex, 'pending', 'chờ duyệt', 'cho duyet', 'cho_duyet', 'chờ phe duyet', 'cho phe duyet'])).length;
         const totalApprovedFromTopic = allTopics.filter(item => matchesStatus(item.status, [approvedStatusRegex, 'approved', 'registered', 'da phe duyet', 'đã phê duyệt', 'đã duyệt'])).length;
         const totalApprovedFromPool = allPoolTopics.filter(item =>
             matchesStatus(item.status, [approvedStatusRegex, 'approved', 'registered', 'da phe duyet', 'đã phê duyệt', 'đã duyệt']) || item.status === 'PENDING'
+        ).length;
+        const approvedTopicsBySource = source => allTopics.filter(item =>
+            item.source === source && matchesStatus(item.status, [approvedStatusRegex])
         ).length;
 
         const approvedTopics = totalApprovedFromTopic + totalApprovedFromPool;
@@ -118,28 +162,46 @@ exports.getAdminDashboardStats = async (req, res) => {
             }))
             .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
-        // 3. Thống kê số lượng đăng ký theo 6 tháng gần nhất (Cho Line Chart)
-        const monthlyRegistrations = [0, 0, 0, 0, 0, 0];
-        const now = new Date();
-        
         const monthlyData = await Topic.aggregate([
             { $match: topicFilter },
             {
                 $group: {
-                    _id: { $month: "$createdAt" },
+                    _id: {
+                        $dateToString: {
+                            format: '%Y-%m',
+                            date: '$createdAt',
+                            timezone: 'Asia/Ho_Chi_Minh'
+                        }
+                    },
                     count: { $sum: 1 }
                 }
             }
         ]);
 
+        const now = new Date();
+        const lastMonth = getVietnamMonthParts(now);
+        const firstMonth = registrationRange
+            ? getVietnamMonthParts(registrationRange.start)
+            : { year: lastMonth.year, month: lastMonth.month - 5 };
+        const firstMonthIndex = firstMonth.year * 12 + firstMonth.month - 1;
+        const registrationEndMonth = registrationRange
+            ? getVietnamMonthParts(registrationRange.end)
+            : lastMonth;
+        const lastMonthIndex = registrationEndMonth.year * 12 + registrationEndMonth.month - 1;
+        const chartEndIndex = registrationRange
+            ? Math.min(lastMonthIndex, firstMonthIndex + 5)
+            : lastMonthIndex;
+        const chartStartYear = Math.floor(firstMonthIndex / 12);
+        const chartEndYear = Math.floor(chartEndIndex / 12);
+        const monthlyCountByKey = new Map(monthlyData.map(item => [item._id, item.count]));
         const monthLabels = [];
-        for (let i = 5; i >= 0; i--) {
-            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const monthNum = d.getMonth() + 1;
-            monthLabels.push(`Tháng ${monthNum}`);
-
-            const found = monthlyData.find(m => m._id === monthNum);
-            monthlyRegistrations[5 - i] = found ? found.count : 0;
+        const monthlyRegistrations = [];
+        for (let monthIndex = firstMonthIndex; monthIndex <= chartEndIndex; monthIndex++) {
+            const year = Math.floor(monthIndex / 12);
+            const month = monthIndex % 12 + 1;
+            const key = `${year}-${String(month).padStart(2, '0')}`;
+            monthLabels.push(`Tháng ${month}${chartStartYear !== chartEndYear ? `/${year}` : ''}`);
+            monthlyRegistrations.push(monthlyCountByKey.get(key) || 0);
         }
 
         return res.status(200).json({
@@ -154,8 +216,8 @@ exports.getAdminDashboardStats = async (req, res) => {
                 needRevisionTopics,
                 inProgressTopics,
                 approvedBySource: {
-                    lecturer: approvedTopicsFromPool,
-                    student: approvedTopicsFromTopic
+                    lecturer: registrationRange ? approvedTopicsBySource('LECTURER') : approvedTopicsFromPool,
+                    student: registrationRange ? approvedTopicsBySource('STUDENT') : approvedTopicsFromTopic
                 },
                 pendingBySource: {
                     lecturer: 0,
@@ -166,7 +228,10 @@ exports.getAdminDashboardStats = async (req, res) => {
                 monthLabels,
                 monthlyRegistrations
             },
-            pendingTopicsList: pendingList
+            pendingTopicsList: pendingList,
+            selectedSemester: selectedSemester
+                ? { _id: selectedSemester._id, name: selectedSemester.name }
+                : null
         });
 
     } catch (error) {

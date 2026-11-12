@@ -2,7 +2,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 1. KIỂM TRA QUYỀN TRUY CẬP
     const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
     const user = auth?.user || null;
-    if (!user || user.role !== "STUDENT") {
+    if (!user || !auth.token || user.role !== "STUDENT") {
         window.location.href = "index.html";
         return;
     }
@@ -12,7 +12,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     let profileUser = user;
     try {
-        const profileResponse = await fetch(`http://localhost:5000/api/auth/users/${encodeURIComponent(user.user_code)}`);
+        const profileResponse = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${encodeURIComponent(user.user_code)}`, {
+            headers: { Authorization: `Bearer ${auth.token}` }
+        });
         const profileResult = await profileResponse.json();
         if (profileResponse.ok && profileResult.user_code) {
             profileUser = { ...user, ...profileResult };
@@ -51,9 +53,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...';
 
             try {
-                const response = await fetch(`http://localhost:5000/api/auth/students/${encodeURIComponent(user.user_code)}/profile`, {
+                const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/students/${encodeURIComponent(user.user_code)}/profile`, {
                     method: "PUT",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${auth.token}`
+                    },
                     body: JSON.stringify({
                         email: profileFields.email.value.trim(),
                         phone: profileFields.phone.value.trim(),
@@ -235,11 +240,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         try {
-            const response = await fetch("http://localhost:5000/api/auth/change-password", {
+            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/change-password", {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${auth.token}`
+                },
                 body: JSON.stringify({
-                    user_code: user.user_code,
                     currentPassword: currentPass,
                     newPassword: newPass
                 })

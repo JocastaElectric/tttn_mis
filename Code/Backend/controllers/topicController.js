@@ -4,8 +4,56 @@ const Milestone = require('../models/Milestone');
 const LecturerTopic = require('../models/LecturerTopic');
 const User = require('../models/User');
 const GroupJoinRequest = require('../models/GroupJoinRequest');
+const Semester = require('../models/Semester');
 const fs = require('fs');
 const path = require('path');
+const mongoose = require('mongoose');
+const { notifyUsers, notifyTopicStudents } = require('../services/notificationService');
+
+const activeTopicStatuses = ['PENDING', 'APPROVED', 'NEED_REVISION'];
+const codeRegex = value => new RegExp(
+    `^${String(value || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+    'i'
+);
+
+function getRegistrationEndOfDay(date) {
+    const dateOnly = new Date(date).toISOString().slice(0, 10);
+    return new Date(`${dateOnly}T23:59:59.999+07:00`);
+}
+
+function getRegistrationStartOfDay(date) {
+    const dateOnly = new Date(date).toISOString().slice(0, 10);
+    return new Date(`${dateOnly}T00:00:00+07:00`);
+}
+
+function normalizeTopicTitle(title) {
+    return String(title || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/gi, 'd')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+}
+
+async function findActiveTitleConflict(title, excludeTopicId) {
+    const titleKey = normalizeTopicTitle(title);
+    if (!titleKey) return null;
+
+    const exclude = excludeTopicId ? { _id: { $ne: excludeTopicId } } : {};
+    const indexedConflict = await Topic.findOne({ active_title_key: titleKey, ...exclude })
+        .select('_id title leader_code')
+        .lean();
+    if (indexedConflict) return indexedConflict;
+
+    const legacyTopics = await Topic.find({
+        status: { $in: activeTopicStatuses },
+        active_title_key: { $exists: false },
+        ...exclude
+    }).select('_id title leader_code').lean();
+
+    return legacyTopics.find(topic => normalizeTopicTitle(topic.title) === titleKey) || null;
+}
 
 async function removeUploadedReportFile(filePath) {
     if (!filePath) return;
@@ -28,7 +76,9 @@ async function removeUploadedReportFile(filePath) {
 // 1. Đăng ký mới hoặc Cập nhật / Gửi lại đề tài
 exports.registerTopic = async (req, res) => {
     try {
-        const { lecturer_code, title, description, category, registration_role } = req.body;
+        let { lecturer_code, title, description, category } = req.body;
+        const { registration_role } = req.body;
+        const selectedPoolTopicId = String(req.body.proposed_topic_id || req.body.pool_topic_id || '').trim();
         const normalizeCode = (code) => {
             if (!code) return null;
             const normalized = String(code).trim().toUpperCase();
@@ -87,6 +137,39 @@ exports.registerTopic = async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng chọn đúng vai trò đăng ký đề tài!' });
         }
 
+        let selectedPoolTopic = null;
+        if (registrationRole === 'LEADER' && selectedPoolTopicId) {
+            if (!mongoose.Types.ObjectId.isValid(selectedPoolTopicId)) {
+                return res.status(400).json({ message: 'Đề tài trong kho không hợp lệ. Vui lòng chọn lại!' });
+            }
+
+            selectedPoolTopic = await LecturerTopic.findById(selectedPoolTopicId);
+            if (!selectedPoolTopic || selectedPoolTopic.status === 'REJECTED' || selectedPoolTopic.is_active === false) {
+                return res.status(404).json({ message: 'Đề tài này hiện không khả dụng trong kho!' });
+            }
+
+            const occupiedPoolTopic = await Topic.findOne({
+                active_pool_topic_id: selectedPoolTopic._id
+            }).select('leader_code');
+            if (occupiedPoolTopic && normalizeCode(occupiedPoolTopic.leader_code) !== leader_code) {
+                return res.status(409).json({
+                    message: 'Đề tài này đã được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
+                });
+            }
+
+            if ((selectedPoolTopic.status === 'REGISTERED' || selectedPoolTopic.is_registered === true) &&
+                (!occupiedPoolTopic || normalizeCode(occupiedPoolTopic.leader_code) !== leader_code)) {
+                return res.status(409).json({
+                    message: 'Đề tài này đã được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
+                });
+            }
+
+            lecturer_code = selectedPoolTopic.lecturer_code;
+            title = selectedPoolTopic.title;
+            description = selectedPoolTopic.description;
+            category = selectedPoolTopic.category;
+        }
+
         if (registrationRole === 'MEMBER' && leader_code === requesterCode) {
             return res.status(400).json({ message: 'Mã Trưởng nhóm không được trùng với mã sinh viên của bạn!' });
         }
@@ -119,6 +202,28 @@ exports.registerTopic = async (req, res) => {
         }
 
         let existingTopic = await Topic.findOne({ leader_code: codePattern(leader_code) });
+        if (registrationRole === 'MEMBER' || !existingTopic ||
+            !['PENDING', 'NEED_REVISION'].includes(existingTopic.status)) {
+            const activeSemester = await Semester.findOne({ is_active: true }).lean();
+            const now = new Date();
+            const registrationStart = activeSemester?.registration_start_date
+                ? getRegistrationStartOfDay(activeSemester.registration_start_date)
+                : null;
+            const registrationEnd = activeSemester?.registration_end_date
+                ? new Date(activeSemester.registration_end_date)
+                : null;
+            if (!registrationStart || !registrationEnd) {
+                return res.status(403).json({
+                    message: 'Hiện chưa có học kỳ mở thời hạn đăng ký đề tài. Vui lòng liên hệ quản trị viên.'
+                });
+            }
+            const registrationEndOfDay = getRegistrationEndOfDay(registrationEnd);
+            if (now < registrationStart || now > registrationEndOfDay) {
+                return res.status(403).json({
+                    message: 'Đã hết hoặc chưa đến thời hạn đăng ký đề tài của học kỳ hiện tại.'
+                });
+            }
+        }
 
         if (registrationRole === 'LEADER') {
             const memberCodesToCheck = [member2_code, member3_code].filter(Boolean);
@@ -241,12 +346,24 @@ exports.registerTopic = async (req, res) => {
                 return res.status(400).json({ message: 'Nhóm đã đủ số lượng thành viên hoặc đã có đủ yêu cầu chờ xác nhận!' });
             }
 
-            await GroupJoinRequest.create({ leader_code, member_code: requesterCode });
+            const groupRequest = await GroupJoinRequest.create({ leader_code, member_code: requesterCode });
+            await notifyUsers([leader_code], {
+                title: 'Yêu cầu tham gia nhóm mới',
+                content: `Sinh viên ${requesterCode} muốn tham gia nhóm của bạn.`,
+                eventKey: `group-join-request:${groupRequest._id}`
+            });
 
             return res.status(200).json({
                 success: true,
                 message: 'Đã gửi yêu cầu tham gia nhóm. Vui lòng chờ Trưởng nhóm xác nhận!',
                 pending: true
+            });
+        }
+
+        const duplicateTitle = await findActiveTitleConflict(title, existingTopic?._id);
+        if (duplicateTitle) {
+            return res.status(409).json({
+                message: 'Đề tài này đã được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
             });
         }
 
@@ -281,6 +398,9 @@ exports.registerTopic = async (req, res) => {
             existingTopic.title = title;
             existingTopic.description = description;
             existingTopic.category = category || existingTopic.category || 'Web / Ứng dụng';
+            existingTopic.pool_topic_id = selectedPoolTopic?._id;
+            existingTopic.active_pool_topic_id = selectedPoolTopic?._id;
+            existingTopic.active_title_key = normalizeTopicTitle(title) || undefined;
             existingTopic.status = 'PENDING';
             existingTopic.feedback = '';
 
@@ -340,6 +460,9 @@ exports.registerTopic = async (req, res) => {
             description,
             category: category || 'Web / Ứng dụng',
             source: 'STUDENT',
+            pool_topic_id: selectedPoolTopic?._id,
+            active_pool_topic_id: selectedPoolTopic?._id,
+            active_title_key: normalizeTopicTitle(title) || undefined,
             status: 'PENDING'
         });
 
@@ -356,6 +479,12 @@ exports.registerTopic = async (req, res) => {
 
     } catch (error) {
         console.error("Lỗi đăng ký/cập nhật đề tài:", error);
+        if (error.code === 11000 &&
+            (error.keyPattern?.active_pool_topic_id || error.keyPattern?.active_title_key)) {
+            return res.status(409).json({
+                message: 'Đề tài này vừa được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
+            });
+        }
         return res.status(500).json({ message: 'Lỗi máy chủ khi xử lý đề tài!' });
     }
 };
@@ -364,6 +493,10 @@ exports.registerTopic = async (req, res) => {
 exports.getMyTopic = async (req, res) => {
     try {
         const userCode = String(req.params.user_code || '').trim();
+        const authenticatedCode = String(req.user?.user_code || '').trim();
+        if (!authenticatedCode || authenticatedCode.toUpperCase() !== userCode.toUpperCase()) {
+            return res.status(403).json({ success: false, message: 'Bạn chỉ có thể xem đề tài của tài khoản mình.' });
+        }
         const codePattern = code => new RegExp(`^${String(code || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
         const studentTopicFilter = {
             $or: [
@@ -423,7 +556,9 @@ exports.getMyTopic = async (req, res) => {
             if (!topic) return res.status(404).json({ message: "Không tìm thấy đề tài nào!" });
         }
 
-        const submissions = await Submission.find({ topic_id: topic._id }).lean();
+        const submissions = await Submission.find({ topic_id: topic._id })
+            .sort({ milestone: 1, is_draft: -1, submitted_at: -1, createdAt: -1 })
+            .lean();
 
         const submittedSteps = submissions
             .map(submission => Number(String(submission.milestone || submission.milestone_step || '').replace(/\D/g, '')))
@@ -464,9 +599,13 @@ exports.getMyTopic = async (req, res) => {
 exports.updateTopic = async (req, res) => {
     try {
         const { topic_id } = req.params;
-        const { title, description, member2_code, member3_code, lecturer_code, category } = req.body;
+        const { title, description, member2_code, member3_code, category } = req.body;
+        const userCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !userCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ sinh viên mới có thể cập nhật đề tài.' });
+        }
 
-        const topic = await Topic.findById(topic_id);
+        const topic = await Topic.findOne({ _id: topic_id, leader_code: codeRegex(userCode) });
         if (!topic) {
             return res.status(404).json({ message: 'Không tìm thấy đề tài!' });
         }
@@ -496,11 +635,17 @@ exports.updateTopic = async (req, res) => {
         }
 
         topic.title = title || topic.title;
+        const duplicateTitle = await findActiveTitleConflict(topic.title, topic._id);
+        if (duplicateTitle) {
+            return res.status(409).json({
+                message: 'Tên đề tài này đã được nhóm khác đăng ký. Vui lòng chọn tên đề tài khác!'
+            });
+        }
+        topic.active_title_key = normalizeTopicTitle(topic.title) || undefined;
         topic.description = description || topic.description;
         topic.category = category || topic.category;
         topic.member2_code = member2_code !== undefined ? (member2_code || null) : topic.member2_code;
         topic.member3_code = member3_code !== undefined ? (member3_code || null) : topic.member3_code;
-        topic.lecturer_code = lecturer_code || topic.lecturer_code;
         topic.status = 'PENDING';
         topic.feedback = '';
 
@@ -509,6 +654,11 @@ exports.updateTopic = async (req, res) => {
         res.json({ success: true, message: 'Cập nhật thông tin đề tài thành công!', topic });
     } catch (error) {
         console.error("Lỗi khi cập nhật đề tài:", error);
+        if (error.code === 11000 && error.keyPattern?.active_title_key) {
+            return res.status(409).json({
+                message: 'Tên đề tài này vừa được nhóm khác đăng ký. Vui lòng chọn tên đề tài khác!'
+            });
+        }
         res.status(500).json({ message: 'Lỗi máy chủ khi cập nhật đề tài!' });
     }
 };
@@ -516,15 +666,20 @@ exports.updateTopic = async (req, res) => {
 // 4. Hủy đăng ký đề tài theo Mã sinh viên
 exports.cancelTopic = async (req, res) => {
     try {
-        const userCode = req.params.user_code || req.params.topic_id;
+        const userCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !userCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ sinh viên mới có thể hủy đề tài.' });
+        }
 
+        const requestedUserCode = String(req.params.user_code || '').trim();
+        if (requestedUserCode && requestedUserCode.toUpperCase() !== userCode.toUpperCase()) {
+            return res.status(403).json({ success: false, message: 'Bạn chỉ có thể hủy đề tài của nhóm mình.' });
+        }
+
+        const topicId = req.params.topic_id;
         const topic = await Topic.findOne({
-            $or: [
-                { _id: userCode.match(/^[0-9a-fA-F]{24}$/) ? userCode : null },
-                { leader_code: userCode },
-                { member2_code: userCode },
-                { member3_code: userCode }
-            ]
+            ...(topicId ? { _id: topicId } : {}),
+            leader_code: codeRegex(userCode)
         });
 
         if (!topic) {
@@ -536,6 +691,12 @@ exports.cancelTopic = async (req, res) => {
         }
 
         await Topic.findByIdAndDelete(topic._id);
+        if (topic.pool_topic_id) {
+            await LecturerTopic.findByIdAndUpdate(topic.pool_topic_id, {
+                status: 'APPROVED',
+                is_registered: false
+            });
+        }
 
         return res.status(200).json({ success: true, message: "Đã hủy đăng ký đề tài thành công!" });
     } catch (error) {
@@ -599,14 +760,34 @@ exports.uploadMilestone = async (req, res) => {
                 message: `Chưa đến thời gian nộp bài. Mốc này mở từ ${milestone.startDate.toLocaleString('vi-VN')}.`
             });
         }
-        if (now > milestone.endDate && !milestone.allowLate) {
+        const latestOfficialSubmission = await Submission.findOne({
+            topic_id,
+            milestone: step,
+            is_draft: { $ne: true }
+        }).sort({ attempt: -1, submitted_at: -1, createdAt: -1 }).select('review_status').lean();
+        const latestReviewStatus = latestOfficialSubmission?.review_status || 'PENDING_REVIEW';
+        if (now > milestone.endDate && !milestone.allowLate && latestReviewStatus !== 'REVISION_REQUESTED') {
             discardFile();
             return res.status(403).json({ success: false, message: 'Đã quá hạn nộp bài cho mốc này.' });
         }
+        if (latestOfficialSubmission && latestReviewStatus !== 'REVISION_REQUESTED') {
+            discardFile();
+            return res.status(409).json({
+                success: false,
+                message: latestReviewStatus === 'APPROVED'
+                    ? 'Bài nộp đã được duyệt, không thể thay đổi.'
+                    : 'Bài nộp đang chờ giảng viên nhận xét.'
+            });
+        }
 
-        const previousSubmission = await Submission.findOne({ topic_id, milestone: step })
+        const previousDraft = await Submission.findOne({ topic_id, milestone: step, is_draft: true })
             .select('file_path')
             .lean();
+        const officialAttempts = await Submission.countDocuments({
+            topic_id,
+            milestone: step,
+            is_draft: { $ne: true }
+        });
 
         const fileInfo = {
             name: file.originalname,
@@ -631,23 +812,33 @@ exports.uploadMilestone = async (req, res) => {
             return res.status(404).json({ success: false, message: "Không tìm thấy đề tài trong hệ thống!" });
         }
 
-        await Submission.findOneAndUpdate(
-            { topic_id: topic_id, milestone: step },
-            {
+        const submissionData = {
                 topic_id: topic_id,
+                student_id: studentCode,
                 milestone: step,
                 file_name: file.originalname,
+                original_name: file.originalname,
                 file_path: file.path,
                 stored_filename: file.filename,
                 file_size: file.size,
                 is_draft: isDraft,
-                submitted_at: new Date()
-            },
-            { upsert: true, new: true }
-        );
+                submitted_at: new Date(),
+                attempt: officialAttempts + 1,
+                review_status: isDraft ? 'DRAFT' : 'PENDING_REVIEW',
+                ...(isDraft ? {} : { feedback: '', reviewed_by: null, reviewed_at: null })
+            };
+        if (isDraft) {
+            await Submission.findOneAndUpdate(
+                { topic_id, milestone: step, is_draft: true },
+                { $set: submissionData },
+                { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+        } else {
+            await Submission.create(submissionData);
+        }
 
-        if (previousSubmission?.file_path && previousSubmission.file_path !== file.path) {
-            await removeUploadedReportFile(previousSubmission.file_path);
+        if (previousDraft?.file_path && previousDraft.file_path !== file.path) {
+            await removeUploadedReportFile(previousDraft.file_path);
         }
 
         return res.status(200).json({
@@ -690,19 +881,40 @@ exports.submitMilestoneDraft = async (req, res) => {
 
         const milestone = await Milestone.findOne({ lecturerCode: topic.lecturer_code, topicId: null, step });
         const now = new Date();
-        if (!milestone || now < milestone.startDate || (now > milestone.endDate && !milestone.allowLate)) {
+        if (!milestone || now < milestone.startDate) {
             return res.status(403).json({ success: false, message: 'Mốc này hiện không nhận bài nộp.' });
         }
 
-        const submission = await Submission.findOne({ topic_id, milestone: step });
+        const submission = await Submission.findOne({ topic_id, milestone: step, is_draft: true });
         if (!submission) {
             return res.status(404).json({ success: false, message: 'Chưa có bản nháp để nộp.' });
         }
         if (!submission.is_draft) {
             return res.status(409).json({ success: false, message: 'Bài ở mốc này đã được nộp chính thức.' });
         }
+        const latestOfficialSubmission = await Submission.findOne({
+            topic_id,
+            milestone: step,
+            is_draft: { $ne: true }
+        }).sort({ attempt: -1, submitted_at: -1, createdAt: -1 }).select('review_status').lean();
+        const latestReviewStatus = latestOfficialSubmission?.review_status || 'PENDING_REVIEW';
+        if (now > milestone.endDate && !milestone.allowLate && latestReviewStatus !== 'REVISION_REQUESTED') {
+            return res.status(403).json({ success: false, message: 'Mốc này hiện không nhận bài nộp.' });
+        }
+        if (latestOfficialSubmission && latestReviewStatus !== 'REVISION_REQUESTED') {
+            return res.status(409).json({
+                success: false,
+                message: latestReviewStatus === 'APPROVED'
+                    ? 'Bài nộp đã được duyệt, không thể nộp lại.'
+                    : 'Bài nộp đang chờ giảng viên nhận xét.'
+            });
+        }
 
         submission.is_draft = false;
+        submission.review_status = 'PENDING_REVIEW';
+        submission.feedback = '';
+        submission.reviewed_by = null;
+        submission.reviewed_at = null;
         submission.submitted_at = now;
         await submission.save();
 
@@ -739,22 +951,34 @@ exports.deleteMilestoneSubmission = async (req, res) => {
         }
 
         const milestone = await Milestone.findOne({ lecturerCode: topic.lecturer_code, topicId: null, step });
-        if (!milestone || (new Date() > milestone.endDate && !milestone.allowLate)) {
+        if (!milestone) {
             return res.status(403).json({ success: false, message: 'Đã hết thời gian chỉnh sửa bài nộp ở mốc này.' });
         }
 
-        const submission = await Submission.findOne({ topic_id, milestone: step }).lean();
+        const submission = await Submission.findOne({ topic_id, milestone: step, is_draft: true }).lean();
+        const latestOfficialSubmission = await Submission.findOne({
+            topic_id,
+            milestone: step,
+            is_draft: { $ne: true }
+        }).sort({ attempt: -1, submitted_at: -1, createdAt: -1 }).select('review_status').lean();
+        const resubmissionRequested = (latestOfficialSubmission?.review_status || 'PENDING_REVIEW') === 'REVISION_REQUESTED';
+        if (new Date() > milestone.endDate && !milestone.allowLate && !resubmissionRequested) {
+            return res.status(403).json({ success: false, message: 'Đã hết thời gian chỉnh sửa bài nộp ở mốc này.' });
+        }
         const milestoneField = `milestone${step}_file`;
         const topicFile = topic[milestoneField];
-        if (!submission && !topicFile) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy bài nộp ở mốc này.' });
+        if (!submission) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy bản nháp cần xóa.' });
         }
 
-        await Submission.deleteMany({ topic_id, milestone: step });
-        await Topic.updateOne({ _id: topic_id }, { $unset: { [milestoneField]: '' } });
-        await removeUploadedReportFile(submission?.file_path || topicFile?.path);
+        await Submission.deleteOne({ _id: submission._id });
+        const currentFilePath = topicFile?.path || '';
+        if (currentFilePath === submission.file_path) {
+            await Topic.updateOne({ _id: topic_id }, { $unset: { [milestoneField]: '' } });
+        }
+        await removeUploadedReportFile(submission.file_path);
 
-        return res.json({ success: true, message: `Đã loại bỏ bài nộp Mốc ${step}. Bạn có thể nộp lại trong thời hạn cho phép.` });
+        return res.json({ success: true, message: `Đã xóa bản nháp Mốc ${step}. Bạn có thể tải tệp khác lên.` });
     } catch (error) {
         console.error('Lỗi xóa bài nộp milestone:', error);
         return res.status(500).json({ success: false, message: 'Không thể xóa bài nộp lúc này.' });
@@ -765,7 +989,21 @@ exports.deleteMilestoneSubmission = async (req, res) => {
 exports.getLecturerPoolTopics = async (req, res) => {
     try {
         const pool = await LecturerTopic.find({ status: { $ne: 'REJECTED' } }).sort({ createdAt: -1 });
-        return res.status(200).json({ success: true, data: pool });
+        const activeTopics = await Topic.find({ status: { $in: activeTopicStatuses } })
+            .select('active_pool_topic_id title')
+            .lean();
+        const occupiedTopicIds = activeTopics
+            .map(topic => topic.active_pool_topic_id?.toString())
+            .filter(Boolean);
+        const occupiedIds = new Set(occupiedTopicIds.map(id => id.toString()));
+        const occupiedTitles = new Set(activeTopics.map(topic => normalizeTopicTitle(topic.title)));
+        const availablePool = pool.filter(topic =>
+            topic.status !== 'REGISTERED' &&
+            topic.is_registered !== true &&
+            !occupiedIds.has(topic._id.toString()) &&
+            !occupiedTitles.has(normalizeTopicTitle(topic.title))
+        );
+        return res.status(200).json({ success: true, data: availablePool });
     } catch (error) {
         console.error("Lỗi lấy kho đề tài giảng viên:", error);
         return res.status(500).json({ success: false, message: error.message });
@@ -867,13 +1105,48 @@ exports.assignLecturerToTopic = async (req, res) => {
 exports.registerPoolTopic = async (req, res) => {
     try {
         const { pool_topic_id, leader_code, member2_code, member3_code } = req.body;
+        const requesterCode = String(req.user?.user_code || '').trim().toUpperCase();
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !requesterCode) {
+            return res.status(403).json({ message: 'Chỉ sinh viên mới được đăng ký đề tài!' });
+        }
+        if (String(leader_code || '').trim().toUpperCase() !== requesterCode) {
+            return res.status(403).json({ message: 'Mã Trưởng nhóm phải trùng với tài khoản đang đăng nhập!' });
+        }
+        const activeSemester = await Semester.findOne({ is_active: true }).lean();
+        const now = new Date();
+        const registrationStart = activeSemester?.registration_start_date
+            ? getRegistrationStartOfDay(activeSemester.registration_start_date)
+            : null;
+        const registrationEnd = activeSemester?.registration_end_date
+            ? new Date(activeSemester.registration_end_date)
+            : null;
+        if (!registrationStart || !registrationEnd) {
+            return res.status(403).json({
+                message: 'Hiện chưa có học kỳ mở thời hạn đăng ký đề tài. Vui lòng liên hệ quản trị viên.'
+            });
+        }
+        const registrationEndOfDay = getRegistrationEndOfDay(registrationEnd);
+        if (now < registrationStart || now > registrationEndOfDay) {
+            return res.status(403).json({
+                message: 'Đã hết hoặc chưa đến thời hạn đăng ký đề tài của học kỳ hiện tại.'
+            });
+        }
+        if (!mongoose.Types.ObjectId.isValid(String(pool_topic_id || ''))) {
+            return res.status(400).json({ message: 'Đề tài trong kho không hợp lệ. Vui lòng chọn lại!' });
+        }
 
         const poolTopic = await LecturerTopic.findById(pool_topic_id);
         if (!poolTopic) {
             return res.status(404).json({ message: "Không tìm thấy đề tài mẫu trong kho!" });
         }
-        if (poolTopic.status === 'REJECTED') {
+        if (poolTopic.status === 'REJECTED' || poolTopic.status === 'REGISTERED' || poolTopic.is_active === false) {
             return res.status(404).json({ message: "Đề tài này hiện không khả dụng trong kho!" });
+        }
+        const duplicateTitle = await findActiveTitleConflict(poolTopic.title);
+        if (duplicateTitle) {
+            return res.status(409).json({
+                message: 'Đề tài này đã được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
+            });
         }
 
         const newTopic = new Topic({
@@ -886,7 +1159,9 @@ exports.registerPoolTopic = async (req, res) => {
             requirements: poolTopic.requirements || '',
             category: poolTopic.category || 'Web / Ứng dụng',
             source: 'LECTURER',
-            pool_topic_id: pool_topic_id, // Bổ sung ID liên kết kho
+            pool_topic_id: poolTopic._id,
+            active_pool_topic_id: poolTopic._id,
+            active_title_key: normalizeTopicTitle(poolTopic.title) || undefined,
             status: 'PENDING'
         });
 
@@ -898,6 +1173,12 @@ exports.registerPoolTopic = async (req, res) => {
         });
     } catch (error) {
         console.error("Lỗi đăng ký đề tài từ Kho:", error);
+        if (error.code === 11000 &&
+            (error.keyPattern?.active_pool_topic_id || error.keyPattern?.active_title_key)) {
+            return res.status(409).json({
+                message: 'Đề tài này vừa được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
+            });
+        }
         return res.status(500).json({ message: "Lỗi máy chủ khi chọn đề tài từ Kho!" });
     }
 };
@@ -909,7 +1190,11 @@ exports.registerPoolTopic = async (req, res) => {
 // 1. Lấy danh sách đề tài sinh viên nộp + Kho đề tài gợi ý của giảng viên (Bổ sung gán trạng thái Đã đăng ký)
 exports.getLecturerTopics = async (req, res) => {
     try {
-        const { lecturer_code } = req.params;
+        const lecturer_code = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' ||
+            lecturer_code.toUpperCase() !== String(req.params.lecturer_code || '').trim().toUpperCase()) {
+            return res.status(403).json({ success: false, message: 'Bạn chỉ có thể xem đề tài của mình.' });
+        }
         
         // Lấy đề tài Sinh viên đăng ký
         const topics = await Topic.find({ lecturer_code }).sort({ createdAt: -1 }).lean();
@@ -1019,7 +1304,11 @@ exports.getLecturerPendingReviewStatus = async (req, res) => {
 // 2. Tạo đề tài trực tiếp vào bảng Topic
 exports.createLecturerTopic = async (req, res) => {
     try {
-        const { lecturer_code, title, category, description, requirements, max_groups } = req.body;
+        const { title, category, description, requirements, max_groups } = req.body;
+        const lecturer_code = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' || !lecturer_code) {
+            return res.status(403).json({ success: false, message: 'Chỉ giảng viên mới có thể tạo đề tài.' });
+        }
 
         const newTopic = new Topic({
             lecturer_code,
@@ -1048,7 +1337,11 @@ exports.createLecturerTopic = async (req, res) => {
 // 3. Giảng viên thêm đề tài gợi ý vào Collection 'lecturer_topics'
 exports.createLecturerPoolTopic = async (req, res) => {
     try {
-        const { lecturer_code, title, description, requirements, category, max_groups } = req.body;
+        const { title, description, requirements, category, max_groups } = req.body;
+        const lecturer_code = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' || !lecturer_code) {
+            return res.status(403).json({ success: false, message: 'Chỉ giảng viên mới có thể tạo đề tài.' });
+        }
 
         const newTopic = new LecturerTopic({
             lecturer_code,
@@ -1119,19 +1412,25 @@ exports.updateTopicStatus = async (req, res) => {
     try {
         const { topic_id } = req.params;
         const { status, feedback } = req.body; 
+        const lecturerCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' || !lecturerCode ||
+            !['APPROVED', 'NEED_REVISION', 'REJECTED'].includes(status)) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền cập nhật trạng thái đề tài này.' });
+        }
 
-        const topic = await Topic.findByIdAndUpdate(
-            topic_id,
-            { 
-                status, 
-                feedback: feedback || '' 
-            },
-            { new: true }
-        );
+        const escapedLecturerCode = lecturerCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const topic = await Topic.findOne({
+            _id: topic_id,
+            lecturer_code: new RegExp(`^${escapedLecturerCode}$`, 'i')
+        });
 
         if (!topic) {
             return res.status(404).json({ message: 'Không tìm thấy đề tài!' });
         }
+        const previousStatus = topic.status;
+        topic.status = status;
+        topic.feedback = String(feedback || '');
+        await topic.save();
 
         // BỔ SUNG: Khi duyệt đề tài, tự động cập nhật bản ghi tương ứng trong Kho (LecturerTopic)
         if (status === 'APPROVED') {
@@ -1146,6 +1445,38 @@ exports.updateTopicStatus = async (req, res) => {
                     { status: 'REGISTERED', is_registered: true }
                 );
             }
+        }
+        if (status === 'REJECTED') {
+            topic.active_pool_topic_id = undefined;
+            topic.active_title_key = undefined;
+            await topic.save();
+            if (topic.pool_topic_id) {
+                await LecturerTopic.findByIdAndUpdate(topic.pool_topic_id, {
+                    status: 'APPROVED',
+                    is_registered: false
+                });
+            }
+        }
+
+        if (previousStatus !== status) {
+            const lecturer = await User.findOne({
+                user_code: new RegExp(`^${escapedLecturerCode}$`, 'i'),
+                role: 'LECTURER'
+            }).select('full_name').lean();
+            const statusTitle = {
+                APPROVED: 'Đề tài đã được duyệt',
+                NEED_REVISION: 'Đề tài cần chỉnh sửa',
+                REJECTED: 'Đề tài đã bị từ chối'
+            }[status];
+            const feedbackText = topic.feedback ? ` Nhận xét giảng viên: ${topic.feedback}` : '';
+            await notifyTopicStudents(topic, {
+                title: statusTitle,
+                content: `Đề tài "${topic.title}" của nhóm đã được cập nhật trạng thái.${feedbackText}`,
+                eventKey: `topic-status:${topic._id}:${previousStatus}:${status}:${topic.updatedAt.getTime()}`,
+                priority: status === 'REJECTED' ? 'warning' : 'info',
+                type: 'LECTURER',
+                senderName: lecturer?.full_name || `Giảng viên ${topic.lecturer_code}`
+            });
         }
 
         let messageText = 'Cập nhật trạng thái đề tài thành công!';
@@ -1167,7 +1498,11 @@ exports.updateTopicStatus = async (req, res) => {
 // 5. Lấy Ma trận Tiến độ báo cáo
 exports.getLecturerProgressMatrix = async (req, res) => {
     try {
-        const { lecturerCode } = req.params;
+        const lecturerCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' ||
+            lecturerCode.toUpperCase() !== String(req.params.lecturerCode || '').trim().toUpperCase()) {
+            return res.status(403).json({ success: false, message: 'Bạn chỉ có thể xem tiến độ đề tài của mình.' });
+        }
 
         const topics = await Topic.find({ 
             lecturer_code: lecturerCode,
@@ -1280,7 +1615,8 @@ exports.updateGroupJoinRequest = async (req, res) => {
         const leaderCode = String(req.params.leader_code || '').trim().toUpperCase();
         const requestId = req.params.request_id;
         const status = String(req.body.status || '').toUpperCase();
-        if (req.user?.user_code?.toUpperCase() !== leaderCode || !['ACCEPTED', 'REJECTED'].includes(status)) {
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' ||
+            req.user?.user_code?.toUpperCase() !== leaderCode || !['ACCEPTED', 'REJECTED'].includes(status)) {
             return res.status(403).json({ message: 'Yêu cầu xác nhận không hợp lệ!' });
         }
         const request = await GroupJoinRequest.findOneAndUpdate(
@@ -1288,6 +1624,14 @@ exports.updateGroupJoinRequest = async (req, res) => {
             { $set: { status } }, { new: true }
         );
         if (!request) return res.status(404).json({ message: 'Không tìm thấy yêu cầu tham gia nhóm!' });
+        await notifyUsers([request.member_code], {
+            title: status === 'ACCEPTED' ? 'Yêu cầu tham gia nhóm đã được chấp nhận' : 'Yêu cầu tham gia nhóm đã bị từ chối',
+            content: status === 'ACCEPTED'
+                ? `Trưởng nhóm ${leaderCode} đã chấp nhận yêu cầu tham gia nhóm của bạn.`
+                : `Trưởng nhóm ${leaderCode} đã từ chối yêu cầu tham gia nhóm của bạn.`,
+            eventKey: `group-join-response:${request._id}:${status}`,
+            priority: status === 'REJECTED' ? 'warning' : 'info'
+        });
         return res.json({ success: true, message: status === 'ACCEPTED' ? 'Đã xác nhận thành viên!' : 'Đã từ chối yêu cầu!' });
     } catch (error) {
         return res.status(500).json({ message: 'Không thể xử lý yêu cầu tham gia nhóm!' });

@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             const response = await fetch(
-                `http://localhost:5000/api/topics/lecturer/${lecturerCode}/pending-review`,
+                `${window.APP_CONFIG.API_BASE_URL}/api/topics/lecturer/${lecturerCode}/pending-review`,
                 { headers: { Authorization: `Bearer ${auth.token}` } }
             );
             if (!response.ok) return;

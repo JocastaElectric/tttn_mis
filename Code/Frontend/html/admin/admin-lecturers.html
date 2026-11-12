@@ -8,6 +8,8 @@
     <!-- Font & Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../../css/admin/admin-lecturers.css">
+    <link rel="stylesheet" href="../../css/common/confirm-dialog.css">
+    <link rel="stylesheet" href="../../css/admin/user-import.css">
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
 </head>
 <body>
@@ -48,6 +50,12 @@
 
                 <div class="menu-heading">QUẢN LÝ NGHIỆP VỤ</div>
                 <ul class="menu-list">
+                    <li class="menu-item">
+                        <a href="admin-semesters.html">
+                            <i class="fa-solid fa-calendar-days"></i>
+                            <span>Học kỳ & đăng ký</span>
+                        </a>
+                    </li>
                     <li class="menu-item">
                         <a href="admin-teams.html">
                             <i class="fa-solid fa-users-rectangle"></i>
@@ -236,6 +244,31 @@
         </div>
     </div>
 
+    <div id="userImportModal" class="modal-overlay" data-kind="lecturers" style="display:none;">
+        <div class="modal-card import-modal-card">
+            <div class="modal-head">
+                <h3>Import danh sách giảng viên</h3>
+                <button type="button" class="close-modal import-close" id="closeImportModal" aria-label="Đóng">&times;</button>
+            </div>
+            <p class="import-help">Tải file mẫu để dùng đúng tên cột. Hỗ trợ .xlsx, tối đa 5 MB và 1.000 dòng. Tài khoản mới có mật khẩu ban đầu là <strong>123456</strong>.</p>
+            <div class="import-toolbar">
+                <button type="button" class="btn btn-outline" id="downloadTemplateBtn"><i class="fa-solid fa-download"></i> Tải file mẫu</button>
+                <input type="file" id="importFile" accept=".xlsx">
+                <button type="button" class="btn btn-primary" id="previewImportBtn">Xem trước</button>
+            </div>
+            <div class="import-summary" id="importSummary"></div>
+            <div class="import-table-wrap">
+                <table class="import-table"><tbody id="importPreviewTable"></tbody></table>
+            </div>
+            <ul class="import-errors" id="importErrors"></ul>
+            <p class="import-message" id="importMessage" role="status"></p>
+            <div class="modal-foot">
+                <button type="button" class="btn btn-outline" id="cancelImportModal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="confirmImportBtn" disabled>Xác nhận import</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL ĐĂNG XUẤT -->
     <div id="logoutModal" class="modal-overlay">
         <div class="modal-card modal-sm text-center">
@@ -249,7 +282,11 @@
         </div>
     </div>
 
+    <script src="../../js/config.js"></script>
+    <script src="../../js/common/confirm-dialog.js"></script>
     <script src="../../js/admin/admin-lecturers.js"></script>
+    <script src="../../js/admin/admin-user-import.js"></script>
+    <script src="../../js/admin/admin-user-export.js"></script>
     <script src="../../js/admin/admin-sidebar.js"></script>
     <script src="../../js/common/app-notifications.js"></script>
 </body>
