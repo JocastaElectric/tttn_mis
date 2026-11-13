@@ -1,1 +1,1 @@
-window.APP_CONFIG = Object.freeze({ API_BASE_URL: "http://localhost:5000" });
+window.APP_CONFIG = Object.freeze({ API_BASE_URL: "https://manage-tttn.onrender.com" });
