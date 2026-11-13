@@ -1,0 +1,163 @@
+const express = require('express');
+const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const authMiddleware = require('../middlewares/authMiddleware');
+
+const requireAdminRole = (req, res, next) => {
+    const userRole = req.user?.role ? String(req.user.role).toUpperCase() : '';
+    const validAdminRoles = ['ADMIN', 'ADMINISTRATOR', 'QUAN_TRI', 'QUAN_TRI_VIEN'];
+    if (validAdminRoles.includes(userRole)) {
+        return next();
+    }
+    return res.status(403).json({
+        success: false,
+        message: 'Quyền truy cập bị từ chối. Chức năng này chỉ dành cho Quản trị viên!'
+    });
+};
+
+const requireStudentRole = (req, res, next) => {
+    if (String(req.user?.role || '').toUpperCase() === 'STUDENT') return next();
+    return res.status(403).json({ success: false, message: 'Chức năng này chỉ dành cho sinh viên.' });
+};
+
+const requireStudentOwnCode = (req, res, next) => {
+    const userCode = String(req.user?.user_code || '').trim().toUpperCase();
+    const requestedCode = String(req.params.user_code || req.params.leader_code || '').trim().toUpperCase();
+    if (String(req.user?.role || '').toUpperCase() === 'STUDENT' &&
+        userCode && userCode === requestedCode) return next();
+    return res.status(403).json({ success: false, message: 'Bạn chỉ có thể thao tác với nhóm của mình.' });
+};
+
+const requireLecturerRole = (req, res, next) => {
+    if (String(req.user?.role || '').toUpperCase() === 'LECTURER') return next();
+    return res.status(403).json({ success: false, message: 'Chức năng này chỉ dành cho giảng viên.' });
+};
+
+const requireLecturerOwnCode = (req, res, next) => {
+    const userRole = String(req.user?.role || '').toUpperCase();
+    const userCode = String(req.user?.user_code || '').toUpperCase();
+    const requestedCode = String(req.params.lecturer_code || req.params.lecturerCode || '').toUpperCase();
+
+    if (userRole !== 'LECTURER' || userCode !== requestedCode) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền xem dữ liệu giảng viên này.' });
+    }
+    return next();
+};
+
+// Cấu hình thư mục lưu file tải lên (uploads/)
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    }
+});
+
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 25 * 1024 * 1024 }, // Giới hạn 25MB
+    defParamCharset: 'utf8'
+});
+
+// Import ĐẦY ĐỦ các hàm từ topicController
+const { 
+    // Các hàm cho Sinh viên
+    registerTopic, 
+    getGroupJoinRequests,
+    updateGroupJoinRequest,
+    getMyTopic, 
+    updateTopic,
+    cancelTopic,
+    uploadMilestone,
+    getLecturerPoolTopics, 
+    registerPoolTopic,
+    getAllTopicsForAdmin,
+    assignLecturerToTopic,
+
+    // Các hàm cho Giảng viên
+    getLecturerPendingReviewStatus,
+    getLecturerTopics, 
+    createLecturerTopic,
+    createLecturerPoolTopic,
+    updateLecturerPoolTopic,
+    updateTopicStatus,
+    getLecturerProgressMatrix,
+    deleteMilestoneSubmission,
+    submitMilestoneDraft
+} = require('../controllers/topicController');
+
+
+// ==========================================
+// ROUTES CHO SINH VIÊN
+// ==========================================
+
+// Kho đề tài mẫu mở cho Sinh viên xem & chọn
+router.get('/admin/all', authMiddleware, requireAdminRole, getAllTopicsForAdmin);
+router.patch('/admin/assign-lecturer/:topic_id', authMiddleware, requireAdminRole, assignLecturerToTopic);
+
+router.get('/pool', authMiddleware, requireStudentRole, getLecturerPoolTopics);
+router.get('/available', authMiddleware, requireStudentRole, getLecturerPoolTopics);
+
+// Sinh viên chọn đăng ký 1 đề tài từ Kho
+router.post('/register-pool', authMiddleware, requireStudentRole, registerPoolTopic);
+
+// Đăng ký đề tài mới (SV tự đề xuất) hoặc Cập nhật/Gửi lại đề tài
+router.post('/register', authMiddleware, requireStudentRole, registerTopic);
+router.get('/join-requests/:leader_code', authMiddleware, requireStudentOwnCode, getGroupJoinRequests);
+router.patch('/join-requests/:leader_code/:request_id', authMiddleware, requireStudentOwnCode, updateGroupJoinRequest);
+
+// Lấy đề tài của sinh viên
+router.get('/my-topic/:user_code', authMiddleware, requireStudentOwnCode, getMyTopic);
+router.get('/student/:user_code', authMiddleware, requireStudentOwnCode, getMyTopic);
+
+// Sinh viên chỉnh sửa đề tài theo ID
+router.put('/update/:topic_id', authMiddleware, requireStudentRole, updateTopic);
+
+// Sinh viên hủy đăng ký đề tài
+router.delete('/cancel/:user_code', authMiddleware, requireStudentOwnCode, cancelTopic);
+router.delete('/delete/:topic_id', authMiddleware, requireStudentRole, cancelTopic);
+
+// Route nộp báo cáo mốc
+router.delete('/:topic_id/milestone/:mIndex/submission', authMiddleware, requireStudentRole, deleteMilestoneSubmission);
+router.post('/:topic_id/milestone/:mIndex/submit', authMiddleware, requireStudentRole, submitMilestoneDraft);
+router.post('/:topic_id/upload-milestone/:mIndex', authMiddleware, requireStudentRole, upload.single('file'), uploadMilestone);
+router.post('/:topic_id/upload-milestone', authMiddleware, requireStudentRole, upload.single('file'), uploadMilestone);
+
+
+// ==========================================
+// ROUTES CHO GIẢNG VIÊN
+// ==========================================
+
+// Giảng viên xem danh sách đề tài
+router.get('/lecturer/:lecturer_code/pending-review', authMiddleware, requireLecturerOwnCode, getLecturerPendingReviewStatus);
+router.get('/lecturer/:lecturer_code', authMiddleware, requireLecturerOwnCode, getLecturerTopics);
+
+// Giảng viên lấy Ma Trận Tiến Độ 5 mốc
+router.get('/lecturer-matrix/:lecturerCode', authMiddleware, requireLecturerOwnCode, getLecturerProgressMatrix);
+
+// Giảng viên thêm đề tài vào Kho đề tài của tôi
+router.post('/lecturer/create', authMiddleware, requireLecturerRole, createLecturerTopic);
+
+// Giảng viên thêm / lấy Kho đề tài gợi ý
+router.post('/lecturer-pool', authMiddleware, requireLecturerRole, createLecturerPoolTopic);
+router.get('/lecturer-pool', authMiddleware, (req, res, next) => {
+    const role = String(req.user?.role || '').toUpperCase();
+    if (['STUDENT', 'LECTURER'].includes(role)) return next();
+    return res.status(403).json({ success: false, message: 'Bạn không có quyền xem kho đề tài.' });
+}, getLecturerPoolTopics);
+router.put('/lecturer-pool/:lecturer_code/:pool_topic_id', authMiddleware, requireLecturerOwnCode, updateLecturerPoolTopic);
+
+// Giảng viên Phê duyệt / Yêu cầu sửa / Từ chối
+router.put('/update-status/:topic_id', authMiddleware, requireLecturerRole, updateTopicStatus);
+
+module.exports = router;

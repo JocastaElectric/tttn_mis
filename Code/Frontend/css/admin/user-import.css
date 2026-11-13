@@ -1,0 +1,90 @@
+.import-modal-card {
+    width: min(900px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+}
+
+.import-help {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 14px;
+}
+
+.import-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.import-toolbar input[type="file"] {
+    max-width: 100%;
+}
+
+.import-summary {
+    color: #334155;
+    font-weight: 600;
+    margin: 14px 0 8px;
+}
+
+.import-table-wrap {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.import-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.import-table th,
+.import-table td {
+    border-bottom: 1px solid #e2e8f0;
+    padding: 8px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.import-table th {
+    background: #f8fafc;
+    position: sticky;
+    top: 0;
+}
+
+.import-errors {
+    color: #b91c1c;
+    font-size: 12px;
+    max-height: 130px;
+    overflow: auto;
+    padding-left: 20px;
+}
+
+.import-message {
+    font-size: 13px;
+    margin-top: 10px;
+}
+
+.import-message.success { color: #15803d; }
+.import-message.error { color: #b91c1c; }
+
+.import-modal-card button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.import-close {
+    background: transparent;
+    border: 0;
+    font-size: 24px;
+}
+
+@media (max-width: 600px) {
+    .import-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
