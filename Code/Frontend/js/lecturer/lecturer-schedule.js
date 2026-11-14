@@ -112,7 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadAvailability() {
         if (!availabilityList) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/availability/${encodeURIComponent(user.user_code)}`, { headers: getAuthHeaders() });
+            const res = await apiFetch(`${API_BASE_URL}/availability/${encodeURIComponent(user.user_code)}`, { headers: getAuthHeaders() });
             const result = await res.json();
             if (!res.ok || !result.success) throw new Error(result.message || "Không thể tải khung giờ rảnh.");
             availabilitySlots = result.data || [];
@@ -177,7 +177,7 @@ document.addEventListener("DOMContentLoaded", () => {
         confirmCloseAvailabilityBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
         if (closeAvailabilityConfirmModal) closeAvailabilityConfirmModal.style.display = "none";
         try {
-            const response = await fetch(`${API_BASE_URL}/lecturer/availability/${encodeURIComponent(slotId)}/close`, {
+            const response = await apiFetch(`${API_BASE_URL}/lecturer/availability/${encodeURIComponent(slotId)}/close`, {
                 method: "PATCH",
                 headers: getAuthHeaders()
             });
@@ -206,7 +206,7 @@ document.addEventListener("DOMContentLoaded", () => {
             };
             const isEditing = Boolean(editingAvailabilitySlotId);
             if (!isEditing) payload.lecturer_code = user.user_code;
-            const response = await fetch(
+            const response = await apiFetch(
                 isEditing
                     ? `${API_BASE_URL}/lecturer/availability/${encodeURIComponent(editingAvailabilitySlotId)}`
                     : `${API_BASE_URL}/lecturer/availability`,
@@ -236,7 +236,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================
     async function loadMeetings() {
         try {
-            const res = await fetch(`${API_BASE_URL}/lecturer/meetings/${user.user_code}`, {
+            const res = await apiFetch(`${API_BASE_URL}/lecturer/meetings/${user.user_code}`, {
                 method: "GET",
                 headers: getAuthHeaders()
             });
@@ -487,7 +487,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 if (shouldDelete) {
                     try {
-                        const res = await fetch(`${API_BASE_URL}/lecturer/meetings/${id}`, {
+                        const res = await apiFetch(`${API_BASE_URL}/lecturer/meetings/${id}`, {
                             method: "DELETE",
                             headers: getAuthHeaders()
                         });
@@ -520,7 +520,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Hàm gọi API PATCH thay đổi trạng thái
     async function updateMeetingStatusApi(id, status, notes = "") {
         try {
-            const res = await fetch(`${API_BASE_URL}/lecturer/meetings/status/${id}`, {
+            const res = await apiFetch(`${API_BASE_URL}/lecturer/meetings/status/${id}`, {
                 method: "PATCH",
                 headers: getAuthHeaders(),
                 body: JSON.stringify({ status, notes })
@@ -575,7 +575,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!headerRow || !statusHeader) return;
 
         try {
-            const response = await fetch(`${API_MILESTONES_URL}/lecturer`, { headers: getAuthHeaders() });
+            const response = await apiFetch(`${API_MILESTONES_URL}/lecturer`, { headers: getAuthHeaders() });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || "Không thể tải milestone.");
 
@@ -604,7 +604,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             await loadMilestoneHeaders();
             const emptyRowColspan = 4 + progressMilestones.length;
-            const res = await fetch(`${API_TOPICS_URL}/lecturer-matrix/${user.user_code}`, {
+            const res = await apiFetch(`${API_TOPICS_URL}/lecturer-matrix/${user.user_code}`, {
                 method: "GET",
                 headers: getAuthHeaders()
             });

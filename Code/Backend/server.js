@@ -1,5 +1,15 @@
 const express = require('express');
 const dotenv = require('dotenv');
+dotenv.config();
+const getJwtSecret = require('./utils/jwtSecret');
+
+try {
+	getJwtSecret();
+} catch (error) {
+	console.error(`❌ Cấu hình JWT không hợp lệ: ${error.message}`);
+	process.exit(1);
+}
+
 const path = require('path');
 const connectDB = require('./config/db.js');
 const { createCorsMiddleware } = require('./config/cors');
@@ -30,8 +40,6 @@ const {
 	startMilestoneReminderJob,
 	startSemesterRegistrationNotifier
 } = require('./services/notificationService');
-
-dotenv.config();
 
 const app = express();
 
@@ -101,14 +109,36 @@ app.use('/api/semesters', semesterRoutes);
 app.get('/api/groups/lecturer/:lecturerCode', groupController.getGroupsByLecturer);
 
 const PORT = process.env.PORT || 5000;
+const migratePoolTopicIndexes = async () => {
+	const legacyUniqueIndexes = new Set([
+		'unique_active_pool_topic',
+		'unique_active_topic_title'
+	]);
+	const collectionExists = await Topic.db.db
+		.listCollections({ name: Topic.collection.name }, { nameOnly: true })
+		.hasNext();
+	if (!collectionExists) return;
+
+	const indexes = await Topic.collection.indexes();
+	for (const index of indexes) {
+		if (legacyUniqueIndexes.has(index.name) && index.unique) {
+			await Topic.collection.dropIndex(index.name);
+			console.log(`Removed legacy unique index: ${index.name}`);
+		}
+	}
+};
+
 connectDB()
-	.then(() => Promise.all([
-		Milestone.syncIndexes(),
-		Topic.init(),
-		Semester.init(),
-		Notification.init(),
-		ActivityLog.init()
-	]))
+	.then(async () => {
+		await migratePoolTopicIndexes();
+		await Promise.all([
+			Milestone.syncIndexes(),
+			Topic.init(),
+			Semester.init(),
+			Notification.init(),
+			ActivityLog.init()
+		]);
+	})
 	.then(() => seedUsersIfEmpty())
 	.then(() => {
 		startMilestoneReminderJob();

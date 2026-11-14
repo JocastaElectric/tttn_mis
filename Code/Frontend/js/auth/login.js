@@ -1,59 +1,3 @@
-function getRoleStorageKey(role) {
-    return {
-        STUDENT: "studentAuth",
-        LECTURER: "lecturerAuth",
-        ADMIN: "adminAuth"
-    }[role] || "auth";
-}
-
-function persistAuthForRole(role, token, user) {
-    const key = getRoleStorageKey(role);
-    const auth = { token, user };
-
-    sessionStorage.setItem("activeAuth", JSON.stringify(auth));
-    localStorage.setItem(key, JSON.stringify(auth));
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(user));
-    localStorage.setItem("activeRole", role);
-}
-
-function clearAuthForRole(role) {
-    const key = getRoleStorageKey(role);
-    localStorage.removeItem(key);
-
-    const activeRole = localStorage.getItem("activeRole");
-    if (activeRole === role) {
-        localStorage.removeItem("activeRole");
-    }
-
-    const remainingRoleKeys = [
-        { role: "STUDENT", key: "studentAuth" },
-        { role: "LECTURER", key: "lecturerAuth" },
-        { role: "ADMIN", key: "adminAuth" }
-    ];
-
-    const activeAuth = remainingRoleKeys
-        .map(({ key }) => localStorage.getItem(key))
-        .find(Boolean);
-
-    if (activeAuth) {
-        try {
-            const parsed = JSON.parse(activeAuth);
-            if (parsed && parsed.token && parsed.user) {
-                localStorage.setItem("token", parsed.token);
-                localStorage.setItem("user", JSON.stringify(parsed.user));
-                localStorage.setItem("activeRole", remainingRoleKeys.find(({ key }) => localStorage.getItem(key) === activeAuth)?.role || "STUDENT");
-            }
-        } catch (error) {
-            console.warn("Không thể phục hồi auth còn lại:", error);
-        }
-    } else {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        localStorage.removeItem("activeRole");
-    }
-}
-
 document.addEventListener("DOMContentLoaded", () => {
     const campusClockHands = document.querySelectorAll("[data-clock-hand]");
     if (campusClockHands.length > 0) {
@@ -151,7 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             // Gửi request tới Backend API (Đổi cổng thành cổng thực tế của bạn sau này)
-            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/login", {
+            const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
@@ -170,11 +114,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // --- NẾU ĐĂNG NHẬP THÀNH CÔNG ---
             
-            // 1. Lưu JWT Token và User Info vào LocalStorage theo role riêng
-            persistAuthForRole(data.user.role, data.token, data.user);
+            // Keep only profile data in browser storage; the JWT stays in the HttpOnly cookie.
+            window.storeAuthUser(data.user);
+            window.resetAuthInactivityTimer();
 
             // 2. Điều hướng trang theo Role (STUDENT, LECTURER, ADMIN)
             setTimeout(() => {
+                if (data.user.must_change_password) {
+                    window.location.href = "../auth/force-change-password.html";
+                    return;
+                }
+
                 const role = data.user.role;
                 if (role === "STUDENT") {
                     window.location.href = "../student/student-dashboard.html";
@@ -251,7 +201,7 @@ document.addEventListener("DOMContentLoaded", () => {
             fpSubmitBtn.innerHTML = "<span>Đang xử lý...</span>";
 
             try {
-                const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/forgot-password", {
+                const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/forgot-password", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ user_code, email })

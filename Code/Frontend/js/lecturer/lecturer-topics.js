@@ -7,7 +7,6 @@ let allTopicsData = {
     approved: [],
     myPool: []
 };
-
 // Biến tạm lưu trữ ID đề tài và hành động đang thao tác trong Modal
 let currentSelectedTopicId = null;
 let currentActionType = null; // 'APPROVE' | 'REJECT' | 'REVISION'
@@ -25,7 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const token = lecturerAuth?.token;
     const userStr = lecturerAuth?.user ? JSON.stringify(lecturerAuth.user) : null;
 
-    if (!token || !userStr) {
+    if (!userStr) {
         showAppNotification("Bạn chưa đăng nhập. Vui lòng đăng nhập để tiếp tục!");
         window.location.href = "../auth/index.html";
         return;
@@ -84,7 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
  */
 async function loadLecturerTopics(lecturerCode, token) {
     try {
-        const response = await fetch(`${API_BASE_URL}/lecturer/${lecturerCode}`, {
+        const response = await apiFetch(`${API_BASE_URL}/lecturer/${lecturerCode}`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -97,11 +96,11 @@ async function loadLecturerTopics(lecturerCode, token) {
                 approved: result.data.approved || [],
                 myPool: result.data.myPool || []
             };
-
             // Cập nhật số lượng huy hiệu (badge) tab Chờ duyệt
             const badgePending = document.getElementById("badge-pending");
             if (badgePending) {
                 badgePending.textContent = allTopicsData.pending.length;
+                badgePending.classList.toggle("has-pending", allTopicsData.pending.length > 0);
             }
 
             const badgeApproved = document.getElementById("badge-approved");
@@ -263,34 +262,27 @@ function renderMyTopicsTable(list) {
         return;
     }
 
-    // Lấy danh sách Tên & ID của tất cả các Đề tài ĐÃ PHÊ DUYỆT từ Tab 2
-    const approvedTitles = (allTopicsData.approved || []).map(t => (t.title || "").trim().toLowerCase());
-    const approvedPoolIds = (allTopicsData.approved || []).map(t => (t.pool_topic_id || t.pool_id || "").toString().trim().toLowerCase());
-
     list.forEach(topic => {
         const tr = document.createElement("tr");
         const tagClass = getCategoryTagClass(topic.category);
-        
-        const currentTitle = (topic.title || "").trim().toLowerCase();
-        const currentId = (topic._id || "").toString().trim().toLowerCase();
+        const registeredGroups = Number(topic.registered_groups) || 0;
+        const maxGroupsValue = Number(topic.max_groups);
+        const maxGroups = Number.isInteger(maxGroupsValue) && maxGroupsValue >= 0
+            ? maxGroupsValue
+            : 1;
+        const isRegistered = topic.status === 'REGISTERED' || topic.is_registered === true;
 
-        // Kiểm tra xem Đề tài Kho này có khớp với đề tài nào đã được duyệt hay không
-        const isMatchedWithApproved = approvedTitles.includes(currentTitle) || (currentId && approvedPoolIds.includes(currentId));
-
-        const isRegistered = (
-            topic.status === 'REGISTERED' || 
-            topic.is_registered === true
-        );
-
-        const statusBadge = isRegistered
-            ? `<span class="badge badge-success">Đã đăng ký</span>` 
+        const statusBadge = maxGroups === 0 && registeredGroups === 0
+            ? `<span class="badge badge-warning">Tạm khóa (hết chỉ tiêu)</span>`
+            : isRegistered
+            ? `<span class="badge badge-success">Đã có nhóm đăng ký (${registeredGroups}/${maxGroups})</span>`
             : topic.status === 'APPROVED'
-            ? `<span class="badge badge-primary">Đã phê duyệt</span>`
+            ? `<span class="badge badge-primary">Đang mở (${registeredGroups}/${maxGroups})</span>`
             : topic.status === 'PENDING'
             ? `<span class="badge badge-warning">Chờ duyệt</span>`
             : topic.status === 'REJECTED'
             ? `<span class="badge badge-danger">Đã từ chối</span>`
-            : `<span class="badge badge-warning">Đang mở đăng ký</span>`;
+            : `<span class="badge badge-primary">Đang mở (${registeredGroups}/${maxGroups})</span>`;
 
         tr.innerHTML = `
             <td><strong>${topic.topic_code || ("DT-" + (topic._id ? topic._id.slice(-5).toUpperCase() : "0000"))}</strong></td>
@@ -368,7 +360,6 @@ function setupModals(lecturerCode, token) {
             editingPoolTopicId = topic._id;
             document.getElementById("createTitle").value = topic.title || "";
             document.getElementById("createCategory").value = topic.category || "Web / Ứng dụng";
-            document.getElementById("createMaxGroups").value = topic.max_groups || 1;
             document.getElementById("createDescription").value = topic.description || "";
             document.getElementById("createRequirements").value = topic.requirements || "";
             if (modalTitle) modalTitle.textContent = "Chỉnh sửa đề tài trong kho";
@@ -382,7 +373,6 @@ function setupModals(lecturerCode, token) {
             e.preventDefault();
             const titleInput = document.getElementById("createTitle")?.value.trim();
             const categoryInput = document.getElementById("createCategory")?.value;
-            const maxGroupsInput = document.getElementById("createMaxGroups")?.value;
             const descriptionInput = document.getElementById("createDescription")?.value.trim();
             const requirementsInput = document.getElementById("createRequirements")?.value.trim();
 
@@ -390,13 +380,12 @@ function setupModals(lecturerCode, token) {
                 showAppNotification("Vui lòng nhập tên đề tài!");
                 return;
             }
-
             try {
                 const isEditing = Boolean(editingPoolTopicId);
                 const url = isEditing
                     ? `${API_BASE_URL}/lecturer-pool/${encodeURIComponent(lecturerCode)}/${encodeURIComponent(editingPoolTopicId)}`
                     : `${API_BASE_URL}/lecturer-pool`;
-                const response = await fetch(url, {
+                const response = await apiFetch(url, {
                     method: isEditing ? "PUT" : "POST",
                     headers: { 
                         "Content-Type": "application/json",
@@ -407,8 +396,7 @@ function setupModals(lecturerCode, token) {
                         title: titleInput,
                         category: categoryInput || "Web / Ứng dụng",
                         description: descriptionInput || "Chưa có mô tả chi tiết",
-                        requirements: requirementsInput || "",
-                        max_groups: Number(maxGroupsInput) || 1
+                        requirements: requirementsInput || ""
                     })
                 });
 
@@ -540,7 +528,7 @@ window.openRevisionModal = function(topicId) {
  */
 async function executeStatusUpdate(topicId, status, feedback, lecturerCode, token) {
     try {
-        const response = await fetch(`${API_BASE_URL}/update-status/${topicId}`, {
+        const response = await apiFetch(`${API_BASE_URL}/update-status/${topicId}`, {
             method: "PUT",
             headers: { 
                 "Content-Type": "application/json",

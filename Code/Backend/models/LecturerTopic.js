@@ -6,7 +6,7 @@ const lecturerTopicSchema = new mongoose.Schema({
     description: { type: String, default: '' }, // Bỏ required: true
     requirements: { type: String, default: '' },
     category: { type: String, default: 'Web / Ứng dụng' },
-    max_groups: { type: Number, default: 1 },
+    max_groups: { type: Number, min: 1, max: 1, default: 1 },
     status: {
         type: String,
         enum: ['PENDING', 'APPROVED', 'REJECTED', 'REGISTERED'],

@@ -9,6 +9,7 @@
     <!-- CSS -->
     <link rel="stylesheet" href="../../css/auth/style.css">
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
+    <link rel="stylesheet" href="../../css/responsive.css">
 </head>
 
 <body>
@@ -16,37 +17,35 @@
     <!-- ===== BACKGROUND ===== -->
     <div class="background-decoration" aria-hidden="true">
         <span class="sky-blue-haze"></span>
-        <span class="sky-sun-rays"></span>
-        <span class="sky-sun"></span>
-        <svg class="sky-bird sky-bird-one" viewBox="0 0 44 26">
+        <svg class="sky-bird sky-bird-one sky-bird-from-left" viewBox="0 0 44 26">
             <path class="bird-wing bird-wing-left" d="M22 17 C16 12 10 8 2 9 C8 12 15 17 20 22 L22 23Z" />
             <path class="bird-wing bird-wing-right" d="M22 17 C28 12 34 8 42 9 C36 12 29 17 24 22 L22 23Z" />
         </svg>
-        <svg class="sky-bird sky-bird-two" viewBox="0 0 44 26">
+        <svg class="sky-bird sky-bird-two sky-bird-from-right" viewBox="0 0 44 26">
             <path class="bird-wing bird-wing-left" d="M22 17 C16 12 10 8 2 9 C8 12 15 17 20 22 L22 23Z" />
             <path class="bird-wing bird-wing-right" d="M22 17 C28 12 34 8 42 9 C36 12 29 17 24 22 L22 23Z" />
         </svg>
-        <svg class="sky-bird sky-bird-three" viewBox="0 0 44 26">
+        <svg class="sky-bird sky-bird-three sky-bird-from-left" viewBox="0 0 44 26">
             <path class="bird-wing bird-wing-left" d="M22 17 C16 12 10 8 2 9 C8 12 15 17 20 22 L22 23Z" />
             <path class="bird-wing bird-wing-right" d="M22 17 C28 12 34 8 42 9 C36 12 29 17 24 22 L22 23Z" />
         </svg>
-        <svg class="sky-bird sky-bird-four" viewBox="0 0 44 26">
+        <svg class="sky-bird sky-bird-four sky-bird-from-right" viewBox="0 0 44 26">
             <path class="bird-wing bird-wing-left" d="M22 17 C16 12 10 8 2 9 C8 12 15 17 20 22 L22 23Z" />
             <path class="bird-wing bird-wing-right" d="M22 17 C28 12 34 8 42 9 C36 12 29 17 24 22 L22 23Z" />
         </svg>
-        <svg class="sky-bird sky-bird-five" viewBox="0 0 44 26">
+        <svg class="sky-bird sky-bird-five sky-bird-from-left" viewBox="0 0 44 26">
             <path class="bird-wing bird-wing-left" d="M22 17 C16 12 10 8 2 9 C8 12 15 17 20 22 L22 23Z" />
             <path class="bird-wing bird-wing-right" d="M22 17 C28 12 34 8 42 9 C36 12 29 17 24 22 L22 23Z" />
         </svg>
-        <svg class="sky-bird sky-bird-six" viewBox="0 0 44 26">
+        <svg class="sky-bird sky-bird-six sky-bird-from-right" viewBox="0 0 44 26">
             <path class="bird-wing bird-wing-left" d="M22 17 C16 12 10 8 2 9 C8 12 15 17 20 22 L22 23Z" />
             <path class="bird-wing bird-wing-right" d="M22 17 C28 12 34 8 42 9 C36 12 29 17 24 22 L22 23Z" />
         </svg>
-        <svg class="sky-bird sky-bird-seven" viewBox="0 0 44 26">
+        <svg class="sky-bird sky-bird-seven sky-bird-from-left" viewBox="0 0 44 26">
             <path class="bird-wing bird-wing-left" d="M22 17 C16 12 10 8 2 9 C8 12 15 17 20 22 L22 23Z" />
             <path class="bird-wing bird-wing-right" d="M22 17 C28 12 34 8 42 9 C36 12 29 17 24 22 L22 23Z" />
         </svg>
-        <svg class="sky-bird sky-bird-eight" viewBox="0 0 44 26">
+        <svg class="sky-bird sky-bird-eight sky-bird-from-right" viewBox="0 0 44 26">
             <path class="bird-wing bird-wing-left" d="M22 17 C16 12 10 8 2 9 C8 12 15 17 20 22 L22 23Z" />
             <path class="bird-wing bird-wing-right" d="M22 17 C28 12 34 8 42 9 C36 12 29 17 24 22 L22 23Z" />
         </svg>
@@ -69,6 +68,21 @@
             </g>
             <g transform="translate(1574 658)">
                 <g class="falling-leaf leaf-three">
+                    <path d="M0 0 C4 -7 11 -8 15 -6 C13 1 7 5 0 0Z M1 0 L13 -6" />
+                </g>
+            </g>
+            <g transform="translate(1050 675)">
+                <g class="falling-leaf leaf-four">
+                    <path d="M0 0 C4 -7 11 -8 15 -6 C13 1 7 5 0 0Z M1 0 L13 -6" />
+                </g>
+            </g>
+            <g transform="translate(1310 630)">
+                <g class="falling-leaf leaf-five">
+                    <path d="M0 0 C4 -7 11 -8 15 -6 C13 1 7 5 0 0Z M1 0 L13 -6" />
+                </g>
+            </g>
+            <g transform="translate(730 640)">
+                <g class="falling-leaf leaf-six">
                     <path d="M0 0 C4 -7 11 -8 15 -6 C13 1 7 5 0 0Z M1 0 L13 -6" />
                 </g>
             </g>
@@ -104,7 +118,7 @@
 
 
             <!-- ===== LOGIN FORM ===== -->
-            <form id="loginForm" class="login-form">
+            <form id="loginForm" class="login-form" autocomplete="on">
 
                 <!-- Mã định danh -->
                 <div class="form-group">
@@ -122,8 +136,9 @@
                         <input
                             type="text"
                             id="userCode"
+                            name="username"
                             placeholder="Nhập MSSV / Mã GV "
-                            autocomplete="off"
+                            autocomplete="username"
                             required
                         />
 
@@ -148,7 +163,9 @@
                         <input
                             type="password"
                             id="password"
+                            name="password"
                             placeholder="••••••••••"
+                            autocomplete="current-password"
                             required
                         />
 
@@ -222,7 +239,7 @@
 
             <h3>Khôi phục mật khẩu</h3>
             <p class="fp-modal-desc">
-                Nhập Mã định danh và Email đã đăng ký với tài khoản. Hệ thống sẽ đặt lại mật khẩu tạm thời cho bạn.
+                Nhập Mã định danh và Email đã đăng ký. Nếu thông tin khớp, hệ thống sẽ gửi liên kết đặt lại mật khẩu đến email đó. Liên kết có hiệu lực trong 15 phút.
             </p>
 
             <form id="forgotPasswordForm" novalidate>

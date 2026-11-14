@@ -1,0 +1,325 @@
+html {
+    max-width: 100%;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+img,
+svg,
+video,
+canvas,
+iframe {
+    max-width: 100%;
+}
+
+.app-layout,
+.app-container,
+.main-wrapper,
+.main-content,
+.content-body,
+.page-body {
+    min-width: 0;
+}
+
+.sidebar-notification-badge {
+    min-width: 18px;
+    height: 18px;
+    margin-left: auto;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+}
+
+.page-ellipsis {
+    min-width: 20px;
+    color: #64748b;
+    text-align: center;
+}
+
+.table-container,
+.table-responsive,
+.table-wrapper,
+.table-scroll,
+.data-table-wrapper,
+.table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.modal-overlay,
+.file-picker-overlay {
+    padding: 12px;
+}
+
+.modal-overlay .modal-card,
+.modal-overlay .modal-box,
+.modal .modal-content,
+.file-picker-dialog {
+    width: min(100%, 700px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+}
+
+@media (max-width: 1024px) {
+    .app-layout .sidebar {
+        position: fixed;
+        z-index: 210;
+        inset: 0 auto 0 0;
+        width: min(280px, 86vw);
+        height: 100vh;
+        height: 100dvh;
+        overflow-y: auto;
+        box-shadow: 12px 0 30px rgba(15, 23, 42, 0.16);
+        transform: translateX(0);
+        transition: transform 0.25s ease;
+    }
+
+    .app-layout.sidebar-collapsed .sidebar {
+        transform: translateX(-105%);
+    }
+
+    .app-layout .main-wrapper {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .app-container .sidebar {
+        position: fixed;
+        z-index: 210;
+        inset: 0 auto 0 0;
+        width: min(280px, 86vw);
+        height: 100vh;
+        height: 100dvh;
+        overflow-y: auto;
+        transform: translateX(-105%);
+        transition: transform 0.25s ease;
+        box-shadow: 12px 0 30px rgba(15, 23, 42, 0.16);
+    }
+
+    .app-container.sidebar-open .sidebar {
+        transform: translateX(0);
+    }
+
+    .app-container .main-content {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        border: 0;
+        background: rgba(15, 23, 42, 0.42);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+    }
+
+    .sidebar-backdrop.is-visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .grid-3-col,
+    .grid-2-1,
+    .grid-2,
+    .grid-2-col,
+    .topic-detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .kpi-grid-5 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .content-body,
+    .page-body {
+        padding: 16px;
+    }
+
+    .top-navbar,
+    .topbar {
+        height: auto;
+        min-height: 56px;
+        padding: 10px 14px;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .navbar-right,
+    .topbar-right {
+        max-width: 100%;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .content-body,
+    .page-body,
+    .card-box,
+    .card-panel,
+    .chart-card,
+    .table-card,
+    .deadline-card,
+    .form-card {
+        min-width: 0;
+    }
+
+    .page-title-box,
+    .page-title-card,
+    .page-header-row,
+    .welcome-banner,
+    .filter-bar,
+    .card-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .action-buttons,
+    .header-actions,
+    .filter-controls,
+    .form-actions-bar {
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .search-input-group {
+        width: 100%;
+        max-width: none;
+    }
+
+    .grid-3-col,
+    .grid-2-1,
+    .grid-2,
+    .grid-2-col,
+    .topic-detail-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .topic-detail-grid .detail-item.full-width {
+        grid-column: auto;
+    }
+
+    .kpi-grid-5,
+    .quick-action-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .table-container table,
+    .table-responsive table,
+    .table-wrapper table,
+    .table-scroll table,
+    .data-table-wrapper table,
+    .table-wrap table {
+        min-width: 640px;
+    }
+
+    .modal-actions,
+    .modal-foot {
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 480px) {
+    .content-body,
+    .page-body {
+        padding: 12px;
+    }
+
+    .top-navbar,
+    .topbar {
+        align-items: flex-start;
+    }
+
+    .navbar-right,
+    .topbar-right {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .user-name,
+    .user-info .user-name {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .page-title-box h1,
+    .page-title-box h2,
+    .page-header-row h1,
+    .title-left h1 {
+        font-size: 18px;
+    }
+
+    .card-box,
+    .card-panel,
+    .chart-card,
+    .table-card,
+    .deadline-card,
+    .form-card {
+        padding: 14px;
+    }
+
+    .action-buttons,
+    .header-actions,
+    .filter-controls {
+        width: 100%;
+    }
+
+    .action-buttons > *,
+    .header-actions > *,
+    .filter-controls > *,
+    .form-actions-bar > * {
+        flex: 1 1 100%;
+        justify-content: center;
+    }
+
+    .kpi-grid-5,
+    .quick-action-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .form-grid,
+    .form-grid-2,
+    .grid-2 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .col-span-2 {
+        grid-column: auto;
+    }
+
+    .modal-actions,
+    .modal-foot {
+        flex-direction: column;
+    }
+
+    .modal-actions > *,
+    .modal-foot > * {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-layout .sidebar,
+    .app-container .sidebar,
+    .sidebar-backdrop {
+        transition: none;
+    }
+}

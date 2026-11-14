@@ -1,41 +1,11 @@
-/**
- * Lấy thông tin xác thực tùy theo Role
- */
-function getAuthForRole(role) {
-    const roleKey = {
-        STUDENT: "studentAuth",
-        LECTURER: "lecturerAuth",
-        ADMIN: "adminAuth"
-    }[role] || "auth";
-
-    const activeSession = sessionStorage.getItem("activeAuth");
-    if (activeSession) {
-        try {
-            const sessionAuth = JSON.parse(activeSession);
-            if (sessionAuth?.user?.role === role && sessionAuth.token) return sessionAuth;
-        } catch (error) {
-            sessionStorage.removeItem("activeAuth");
-        }
-    }
-
-    return null;
-}
-
 document.addEventListener("DOMContentLoaded", async () => {
 
     // =========================================================================
     // 1. KIỂM TRA PHIÊN ĐĂNG NHẬP & QUYỀN ADMIN
     // =========================================================================
-    const auth = getAuthForRole("ADMIN") || { token: null, user: null };
-
-    const user = auth?.user;
-    const token = auth?.token;
-
-    if (!user || user.role !== "ADMIN" || !token) {
-        console.warn("Chưa đăng nhập hoặc không phải Admin. Chuyển hướng về trang chủ...");
-        window.location.href = "../auth/index.html";
-        return;
-    }
+    const user = await window.verifyAuthSession("ADMIN");
+    if (!user) return;
+    const token = "";
 
     // Hiển thị tên Admin
     const userNameElem = document.getElementById("userName");
@@ -68,7 +38,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             const url = `${API_BASE_URL}/dashboard/admin?${params}`;
             console.log("Đang gọi API Dashboard tại:", url);
 
-            const res = await fetch(url, {
+            const res = await apiFetch(url, {
                 method: "GET",
                 headers: {
                     "Authorization": `Bearer ${token}`,
@@ -138,7 +108,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         select.append(loadingOption);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/semesters`, {
+            const response = await apiFetch(`${API_BASE_URL}/semesters`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const result = await response.json();

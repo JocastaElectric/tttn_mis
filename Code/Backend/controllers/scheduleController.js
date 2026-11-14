@@ -8,6 +8,15 @@ const isValidDateOnly = value => {
     const date = new Date(`${value}T00:00:00.000Z`);
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 };
+const escapeRegex = value => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const userCodePattern = userCode => new RegExp(`^${escapeRegex(userCode)}$`, 'i');
+const getTopicMemberCodes = topic => [
+    topic?.leader_code,
+    topic?.member2_code,
+    topic?.member3_code
+].filter(Boolean);
+const isGroupMember = (topic, userCode) => getTopicMemberCodes(topic)
+    .some(code => String(code).trim().toUpperCase() === String(userCode).trim().toUpperCase());
 
 // =========================================================
 // A. CÁC HÀM DÀNH CHO PHÍA SINH VIÊN (STUDENT)
@@ -16,15 +25,20 @@ const isValidDateOnly = value => {
 // 1. Lấy dữ liệu tổng quan cho trang Lịch làm việc của Sinh viên
 exports.getScheduleData = async (req, res) => {
     try {
-        const { studentCode } = req.params;
-        const studentCodePattern = new RegExp(`^${String(studentCode).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        const studentCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !studentCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ sinh viên mới được xem lịch nhóm.' });
+        }
+        if (String(req.params.studentCode || '').trim().toUpperCase() !== studentCode.toUpperCase()) {
+            return res.status(403).json({ success: false, message: 'Bạn chỉ có thể xem lịch của nhóm mình.' });
+        }
 
         // Tìm đề tài của sinh viên
         const topic = await Topic.findOne({
             $or: [
-                { leader_code: studentCodePattern },
-                { member2_code: studentCodePattern },
-                { member3_code: studentCodePattern }
+                { leader_code: userCodePattern(studentCode) },
+                { member2_code: userCodePattern(studentCode) },
+                { member3_code: userCodePattern(studentCode) }
             ]
         }).sort({ updatedAt: -1 });
 
@@ -175,8 +189,36 @@ exports.createMeeting = async (req, res) => {
 
 exports.getAvailabilitySlots = async (req, res) => {
     try {
+        const studentCode = String(req.user?.user_code || '').trim();
+        const lecturerCode = String(req.params.lecturerCode || '').trim();
+        const role = String(req.user?.role || '').toUpperCase();
+        if (!studentCode || !lecturerCode) {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền xem khung giờ này.' });
+        }
+
+        if (role === 'LECTURER') {
+            if (lecturerCode.toUpperCase() !== studentCode.toUpperCase()) {
+                return res.status(403).json({ success: false, message: 'Bạn chỉ có thể xem khung giờ của mình.' });
+            }
+        } else if (role === 'STUDENT') {
+            const topic = await Topic.findOne({
+                status: 'APPROVED',
+                lecturer_code: userCodePattern(lecturerCode),
+                $or: [
+                    { leader_code: userCodePattern(studentCode) },
+                    { member2_code: userCodePattern(studentCode) },
+                    { member3_code: userCodePattern(studentCode) }
+                ]
+            }).select('_id');
+            if (!topic) {
+                return res.status(403).json({ success: false, message: 'Bạn chỉ có thể xem khung giờ của giảng viên hướng dẫn nhóm mình.' });
+            }
+        } else {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền xem khung giờ này.' });
+        }
+
         const slots = await AvailabilitySlot.find({
-            lecturer_code: req.params.lecturerCode,
+            lecturer_code: userCodePattern(role === 'LECTURER' ? studentCode : lecturerCode),
             status: { $in: ["OPEN", "FULL"] }
         }).sort({ available_date: 1, time_start: 1 }).lean();
         res.json({ success: true, data: slots });
@@ -340,34 +382,46 @@ exports.deleteAvailabilitySlot = async (req, res) => {
 // 3. Thêm công việc mới vào To-do List
 exports.addTodo = async (req, res) => {
     try {
-        const { student_code, topic_id, title, assigned_to, due_date } = req.body;
-        if (!title) return res.status(400).json({ message: "Tên công việc không được để trống!" });
-
+        const studentCode = String(req.user?.user_code || '').trim();
+        const { topic_id, title, assigned_to, due_date } = req.body;
+        const cleanTitle = String(title || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !studentCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ sinh viên mới được thêm công việc.' });
+        }
+        if (!cleanTitle) return res.status(400).json({ success: false, message: "Tên công việc không được để trống!" });
         if (!topic_id) return res.status(400).json({ message: "Thiếu thông tin đề tài của nhóm!" });
 
         const topic = await Topic.findOne({
             _id: topic_id,
+            status: "APPROVED",
             $or: [
-                { leader_code: student_code },
-                { member2_code: student_code },
-                { member3_code: student_code }
-            ],
-            status: "APPROVED"
+                { leader_code: userCodePattern(studentCode) },
+                { member2_code: userCodePattern(studentCode) },
+                { member3_code: userCodePattern(studentCode) }
+            ]
         });
+        if (!topic) return res.status(403).json({ success: false, message: "Bạn không thuộc đề tài được chọn hoặc đề tài chưa được duyệt!" });
 
-        if (!topic) return res.status(403).json({ message: "Bạn không thuộc đề tài được chọn hoặc đề tài chưa được duyệt!" });
+        const groupMembers = getTopicMemberCodes(topic);
+        const assignedCode = String(assigned_to || '').trim();
+        const assignedMember = assignedCode
+            ? groupMembers.find(code => String(code).toUpperCase() === assignedCode.toUpperCase())
+            : '';
+        if (assignedCode && !assignedMember) {
+            return res.status(400).json({ success: false, message: "Người được giao phải thuộc cùng nhóm." });
+        }
 
         const parsedDueDate = due_date ? new Date(`${due_date}T23:59:59`) : null;
         if (due_date && Number.isNaN(parsedDueDate.getTime())) {
-            return res.status(400).json({ message: "Ngày hạn không hợp lệ!" });
+            return res.status(400).json({ success: false, message: "Ngày hạn không hợp lệ!" });
         }
 
         const newTodo = new Todo({
             topic_id: topic._id,
-            student_code,
-            created_by: student_code,
-            assigned_to: assigned_to || "",
-            title: title.trim(),
+            student_code: studentCode,
+            created_by: studentCode,
+            assigned_to: assignedMember || "",
+            title: cleanTitle,
             due_date: parsedDueDate,
             is_completed: false
         });
@@ -382,10 +436,40 @@ exports.addTodo = async (req, res) => {
 // 4. Đánh dấu hoàn thành / chưa hoàn thành công việc
 exports.toggleTodo = async (req, res) => {
     try {
+        const studentCode = String(req.user?.user_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !studentCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ sinh viên mới được cập nhật công việc.' });
+        }
+
         const { todoId } = req.params;
         const todo = await Todo.findById(todoId);
-        
         if (!todo) return res.status(404).json({ message: "Không tìm thấy công việc!" });
+
+        let topic;
+        if (todo.topic_id) {
+            topic = await Topic.findOne({
+                _id: todo.topic_id,
+                status: 'APPROVED',
+                $or: [
+                    { leader_code: userCodePattern(studentCode) },
+                    { member2_code: userCodePattern(studentCode) },
+                    { member3_code: userCodePattern(studentCode) }
+                ]
+            });
+        } else {
+            topic = await Topic.findOne({
+                status: 'APPROVED',
+                $or: [
+                    { leader_code: userCodePattern(studentCode) },
+                    { member2_code: userCodePattern(studentCode) },
+                    { member3_code: userCodePattern(studentCode) }
+                ]
+            });
+            if (topic && !isGroupMember(topic, todo.student_code)) topic = null;
+        }
+        if (!topic) {
+            return res.status(403).json({ success: false, message: 'Bạn chỉ có thể cập nhật công việc của nhóm mình.' });
+        }
 
         todo.is_completed = todo.is_completed !== true;
         await todo.save();
@@ -403,10 +487,17 @@ exports.toggleTodo = async (req, res) => {
 // 5. Giảng viên lấy danh sách tất cả các buổi hẹn (populate thông tin Đề tài/Nhóm)
 exports.getLecturerMeetings = async (req, res) => {
     try {
-        const { lecturerCode } = req.params; // Hoặc lấy từ query: req.query.lecturer_code
+        const lecturerCode = String(req.user?.user_code || '').trim();
+        const requestedCode = String(req.params.lecturerCode || req.query.lecturer_code || '').trim();
+        if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' || !lecturerCode) {
+            return res.status(403).json({ success: false, message: 'Chỉ giảng viên mới được xem lịch hướng dẫn.' });
+        }
+        if (requestedCode && requestedCode.toUpperCase() !== lecturerCode.toUpperCase()) {
+            return res.status(403).json({ success: false, message: 'Bạn chỉ có thể xem lịch hướng dẫn của mình.' });
+        }
 
         const meetings = await Meeting.find({ 
-            lecturer_code: lecturerCode,
+            lecturer_code: userCodePattern(lecturerCode),
             status: { $ne: "CANCELLED" },
             source: { $ne: "LECTURER" } // Chỉ hiển thị các yêu cầu đặt lịch từ sinh viên
         })

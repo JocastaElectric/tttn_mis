@@ -87,7 +87,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function postNotification(payload) {
-        const response = await fetch(NOTIFICATION_API_URL, {
+        const response = await apiFetch(NOTIFICATION_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -176,7 +176,7 @@ async function loadLecturedGroups(lecturerCode) {
 
     try {
         const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-        const response = await fetch(`${API_BASE_URL}/lecturer/${lecturerCode}`, {
+        const response = await apiFetch(`${API_BASE_URL}/lecturer/${lecturerCode}`, {
             headers: { Authorization: `Bearer ${auth?.token || ''}` }
         });
         const result = await response.json();
@@ -246,8 +246,8 @@ async function getUserDisplayByCode(userCode) {
         } catch {
             auth = null;
         }
-        if (!auth?.token) throw new Error("Phiên đăng nhập không hợp lệ.");
-        const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${encodeURIComponent(userCode)}`, {
+        if (auth?.user?.role !== "LECTURER") throw new Error("Phiên đăng nhập không hợp lệ.");
+        const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${encodeURIComponent(userCode)}`, {
             headers: { Authorization: `Bearer ${auth.token}` }
         });
         const data = await response.json();
@@ -293,17 +293,9 @@ function updateOverviewStats(groups) {
         if (g.member2_code || g.member2Code) totalStudents += 1;
         if (g.member3_code || g.member3Code) totalStudents += 1; // <--- Thêm đếm thành viên 3
 
-        // Ưu tiên đọc progress_percentage hoặc milestone_progress từ Backend
-        const progress = Number(g.progress_percentage || g.milestone_progress || g.progress) || 0;
-        
-        // Nhóm Đúng tiến độ: Có % > 0 hoặc Backend báo không trễ hạn (is_late === false)
-        const isOnTrack = progress > 0 || g.is_late === false;
-
-        if (isOnTrack) {
-            onTrackCount++;
-        } else {
-            warningCount++;
-        }
+        const progressState = getGroupProgressState(g);
+        if (progressState === "ON_TRACK") onTrackCount++;
+        if (progressState === "WARNING") warningCount++;
     });
 
     const totalGroupsEl = document.getElementById("stat-total-groups");
@@ -315,6 +307,16 @@ function updateOverviewStats(groups) {
     if (totalStudentsEl) totalStudentsEl.textContent = totalStudents;
     if (onTrackEl) onTrackEl.textContent = onTrackCount;
     if (warningEl) warningEl.textContent = warningCount;
+}
+
+function getGroupProgressState(group) {
+    if (group.progress_status === "Chưa cấu hình mốc" || Number(group.total_milestones) === 0) {
+        return "UNCONFIGURED";
+    }
+    if (typeof group.is_late === "boolean") return group.is_late ? "WARNING" : "ON_TRACK";
+
+    const progress = Number(group.progress_percentage || group.milestone_progress || group.progress) || 0;
+    return progress > 0 ? "ON_TRACK" : "UNKNOWN";
 }
 
 /**
@@ -338,8 +340,7 @@ function filterAndRenderGroups() {
                              leader.includes(keyword) || member2.includes(keyword) || member3.includes(keyword);
 
         // Đọc % tiến độ chuẩn xác
-        const progress = Number(group.progress_percentage || group.milestone_progress || group.progress) || 0;
-        const groupStatus = (progress > 0 || group.is_late === false) ? "ON_TRACK" : "WARNING";
+        const groupStatus = getGroupProgressState(group);
         const matchesStatus = (status === "ALL") || (groupStatus === status);
 
         return matchesKeyword && matchesStatus;
@@ -359,12 +360,18 @@ function filterAndRenderGroups() {
         const progress = Number(group.progress_percentage || group.milestone_progress || group.progress) || 0;
         
         // 2. Xác định trạng thái tiến độ
-        const isWarning = progress === 0 && group.is_late !== false;
-        const statusClass = isWarning ? "tag-warning" : "tag-success";
-        const statusText = isWarning 
-            ? '<i class="fa-solid fa-triangle-exclamation"></i> Chậm tiến độ' 
-            : '<i class="fa-solid fa-check-circle"></i> Đúng tiến độ';
-        const barColor = isWarning ? "bg-orange" : "bg-blue";
+        const progressState = getGroupProgressState(group);
+        const isWarning = progressState === "WARNING";
+        const isOnTrack = progressState === "ON_TRACK";
+        const statusClass = isWarning ? "tag-warning" : isOnTrack ? "tag-success" : "tag-neutral";
+        const statusText = isWarning
+            ? '<i class="fa-solid fa-triangle-exclamation"></i> Chậm tiến độ'
+            : isOnTrack
+                ? '<i class="fa-solid fa-check-circle"></i> Đúng tiến độ'
+                : progressState === "UNCONFIGURED"
+                    ? '<i class="fa-solid fa-circle-info"></i> Chưa cấu hình mốc'
+                    : '<i class="fa-solid fa-circle-info"></i> Chưa xác định tiến độ';
+        const barColor = isWarning ? "bg-orange" : isOnTrack ? "bg-blue" : "bg-neutral";
         const percentColor = isWarning ? "text-red" : "";
 
         // Lấy thông tin đề tài

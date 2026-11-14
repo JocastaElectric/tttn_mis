@@ -1,6 +1,6 @@
 // notif-badge.js
-// Script dùng chung: cập nhật số lượng thông báo CHƯA ĐỌC lên chuông thông báo
-// ở header của MỌI trang (Sinh viên & Giảng viên), không phụ thuộc trang đó có
+// Script dùng chung: cập nhật số lượng thông báo CHƯA ĐỌC trên mọi trang
+// của Sinh viên và Giảng viên, không phụ thuộc trang đó có
 // logic riêng hay không. Chạy độc lập, không ảnh hưởng các script khác.
 
 (function () {
@@ -9,7 +9,7 @@
         if (activeSession) {
             try {
                 const parsedSession = JSON.parse(activeSession);
-                if (parsedSession?.user?.role === role && parsedSession.token) return parsedSession;
+                if (parsedSession?.user?.role === role) return parsedSession;
             } catch (error) {
                 sessionStorage.removeItem("activeAuth");
             }
@@ -38,7 +38,7 @@
     }
 
     function showRegistrationAnnouncement(title, content, user, auth) {
-        const sessionHash = hashText(`${auth.token}:${user.user_code}`);
+        const sessionHash = hashText(user.user_code);
         const announcementHash = hashText(title);
         const marker = `registrationPopup:${sessionHash}:${announcementHash}`;
         if (sessionStorage.getItem(marker)) return;
@@ -95,9 +95,9 @@
     }
 
     async function checkActiveRegistrationWindow(user, auth) {
-        if (user?.role !== "STUDENT" || !auth?.token) return;
+        if (user?.role !== "STUDENT" || !auth?.user) return;
         try {
-            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/semesters/registration-status", {
+            const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/semesters/registration-status", {
                 headers: { Authorization: `Bearer ${auth.token}` }
             });
             const result = await response.json();
@@ -125,7 +125,7 @@
     async function updateBellBadge() {
         const user = resolveCurrentUser();
         const auth = getAuthForRole(user?.role);
-        if (!user || !user.user_code || !user.role || !auth?.token) return;
+        if (!user || !user.user_code || !user.role || !auth?.user) return;
 
         // Trang Admin chưa có hộp thư thông báo cá nhân riêng, bỏ qua.
         if (user.role === "ADMIN") return;
@@ -136,7 +136,7 @@
             : `${window.APP_CONFIG.API_BASE_URL}/api/notifications/${user.user_code}`;
 
         try {
-            const response = await fetch(endpoint, {
+            const response = await apiFetch(endpoint, {
                 headers: { Authorization: `Bearer ${auth.token}` }
             });
             const data = await response.json();
@@ -167,7 +167,7 @@
                 ));
             if (!hasBaseline && visibleNotifications.length > 3) {
                 window.showAppNotification?.(
-                    `Bạn còn ${visibleNotifications.length - 3} thông báo chưa đọc. Nhấn chuông để xem tất cả.`,
+                    `Bạn còn ${visibleNotifications.length - 3} thông báo chưa đọc. Vào mục Thông báo để xem tất cả.`,
                     "info",
                     false
                 );
@@ -177,7 +177,9 @@
             ));
 
             // Cập nhật MỌI phần tử badge trên trang (id ưu tiên, class dự phòng)
-            const badgeElements = document.querySelectorAll("#headerBadgeCount, .badge-count");
+            const badgeElements = document.querySelectorAll(
+                "#headerBadgeCount, #sidebarNotificationBadge, .badge-count"
+            );
             badgeElements.forEach((el) => {
                 el.textContent = unreadCount;
                 el.style.display = unreadCount > 0 ? "inline-block" : "none";
@@ -188,7 +190,7 @@
         }
     }
 
-    function ensureBellIsClickable() {
+    function ensureNotificationLinkIsClickable() {
         const user = resolveCurrentUser();
         const isLecturer = user && user.role === "LECTURER";
         const targetPage = isLecturer ? "../lecturer/lecturer-notifications.html" : "../shared/notifications.html";
@@ -205,7 +207,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-        ensureBellIsClickable();
+        ensureNotificationLinkIsClickable();
         const user = resolveCurrentUser();
         checkActiveRegistrationWindow(user, getAuthForRole(user?.role));
         updateBellBadge();

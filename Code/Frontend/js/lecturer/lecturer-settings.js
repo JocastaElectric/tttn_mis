@@ -109,7 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             try {
-                const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/change-password", {
+                const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/change-password", {
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json",

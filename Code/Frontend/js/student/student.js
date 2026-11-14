@@ -8,7 +8,7 @@ function getAuthForRole(role) {
     if (activeSession) {
         try {
             const sessionAuth = JSON.parse(activeSession);
-            if (sessionAuth?.user?.role === role && sessionAuth.token) return sessionAuth;
+            if (sessionAuth?.user?.role === role) return sessionAuth;
         } catch (error) {
             sessionStorage.removeItem("activeAuth");
         }
@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const token = auth?.token;
     const userStr = auth?.user ? JSON.stringify(auth.user) : null;
 
-    if (!token || !userStr || userStr === "null") {
+    if (!userStr || userStr === "null") {
         window.location.href = "../auth/index.html";
         return;
     }
@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let isEditing = false;
     let hasEditedMemberCodes = false;
     let allPoolTopics = [];
+    let allLecturers = [];
     let registrationWindowOpen = false;
 
     // Header Info Elements
@@ -159,7 +160,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     async function loadRegistrationWindow() {
         try {
-            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/semesters/registration-status", {
+            const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/semesters/registration-status", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             const result = await response.json();
@@ -262,7 +263,15 @@ document.addEventListener("DOMContentLoaded", async () => {
             proposedSelect.innerHTML = `<option value="">-- Chọn đề tài gợi ý từ Kho (Hoặc tự nhập bên dưới) --</option>` +
                 filtered.map(t => {
                     const codeTag = t.topic_code ? `[${t.topic_code}] ` : '';
-                    return `<option value="${t._id}" data-title="${t.title}" data-desc="${t.description || ''}" data-lecturer="${t.lecturer_code || ''}">${codeTag}${t.title}</option>`;
+                    const registeredGroups = Number(t.registered_groups) || 0;
+                    const maxGroupsValue = Number(t.max_groups);
+                    const maxGroups = Number.isInteger(maxGroupsValue) && maxGroupsValue >= 0
+                        ? maxGroupsValue
+                        : 1;
+                    const remainingGroups = Number(t.remaining_groups ?? maxGroups - registeredGroups);
+                    const isFull = remainingGroups <= 0 || t.status === 'REGISTERED';
+                    const availability = registeredGroups > 0 ? " - Đã có nhóm đăng ký" : "";
+                    return `<option value="${t._id}" data-title="${t.title}" data-desc="${t.description || ''}" data-lecturer="${t.lecturer_code || ''}" ${isFull ? 'disabled' : ''}>${codeTag}${t.title}${availability}</option>`;
                 }).join('');
         } else {
             proposedSelect.innerHTML = `<option value="">-- Giảng viên này hiện chưa có đề tài gợi ý --</option>`;
@@ -275,7 +284,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const loadProposedTopics = async () => {
         if (!proposedSelect) return;
         try {
-            const res = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/lecturer-pool", {
+            const res = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/lecturer-pool", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
 
@@ -298,7 +307,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const loadLecturers = async () => {
         if (!lecturerSelect) return;
         try {
-            const res = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/lecturers", {
+            const res = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/lecturers", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
 
@@ -319,14 +328,21 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
 
                 if (lecturers && lecturers.length > 0) {
+                    allLecturers = lecturers.map(lecturer => {
+                        const quota = Number(lecturer.max_quota);
+                        return {
+                            code: String(lecturer.user_code || lecturer.userCode || lecturer.code || lecturer.username || ""),
+                            name: lecturer.full_name || lecturer.fullName || lecturer.name || "Chưa đặt tên",
+                            groupsCount: Number(lecturer.groupsCount) || 0,
+                            maxQuota: Number.isInteger(quota) && quota >= 0 ? quota : 5
+                        };
+                    });
                     lecturerSelect.innerHTML = `<option value="">-- Chọn Giảng viên hướng dẫn --</option>` +
-                        lecturers.map(g => {
-                            // Tự động nhận diện tên thuộc tính phù hợp
-                            const name = g.full_name || g.fullName || g.name || "Chưa đặt tên";
-                            const code = g.user_code || g.userCode || g.code || g.username || "";
-                            return `<option value="${code}">${name} (${code})</option>`;
-                        }).join('');
+                        allLecturers.map(lecturer =>
+                            `<option value="${lecturer.code}">${lecturer.name} (${lecturer.code})</option>`
+                        ).join('');
                 } else {
+                    allLecturers = [];
                     lecturerSelect.innerHTML = `<option value="">-- Chưa có dữ liệu giảng viên --</option>`;
                 }
             } else {
@@ -351,7 +367,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         inputEl.value = partnerCode;
 
         try {
-            const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${partnerCode}`, {
+            const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${partnerCode}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (res.ok) {
@@ -442,10 +458,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Khi thay đổi Giảng viên -> Cập nhật danh sách Đề tài gợi ý
     if (lecturerSelect) {
         lecturerSelect.addEventListener("change", (e) => {
-            renderProposedTopics(e.target.value);
+            hideMessage();
+            const selectedLecturer = allLecturers.find(lecturer => lecturer.code === e.target.value);
             if (!isEditing) {
                 if (topicTitleInput) topicTitleInput.value = "";
                 if (topicDescInput) topicDescInput.value = "";
+            }
+            renderProposedTopics(e.target.value);
+            if (!isEditing && selectedLecturer &&
+                selectedLecturer.groupsCount >= selectedLecturer.maxQuota) {
+                showMessage(
+                    "error",
+                    `Giảng viên ${selectedLecturer.name} đã đủ số lượng nhóm hướng dẫn. Vui lòng chọn giảng viên khác.`
+                );
             }
         });
     }
@@ -498,7 +523,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const checkTopicStatus = async () => {
         try {
-            const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/student/${user.user_code}`, {
+            const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/student/${user.user_code}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             
@@ -644,9 +669,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     async function loadJoinRequests() {
-        if (!joinRequestsSection || !joinRequestsList || !token) return;
+        if (!joinRequestsSection || !joinRequestsList) return;
         try {
-            const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/join-requests/${encodeURIComponent(user.user_code)}`, {
+            const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/join-requests/${encodeURIComponent(user.user_code)}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (!res.ok) {
@@ -673,7 +698,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             joinRequestsList.querySelectorAll("button[data-id]").forEach(button => {
                 button.addEventListener("click", async () => {
                     button.disabled = true;
-                    const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/join-requests/${encodeURIComponent(user.user_code)}/${button.dataset.id}`, {
+                    const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/join-requests/${encodeURIComponent(user.user_code)}/${button.dataset.id}`, {
                         method: "PATCH",
                         headers: {
                             "Content-Type": "application/json",
@@ -765,7 +790,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             setButtonLoading(confirmCancelBtn, true, "Xác nhận Hủy");
 
             try {
-                const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/cancel/${user.user_code}`, {
+                const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/cancel/${user.user_code}`, {
                     method: "DELETE",
                     headers: { "Authorization": `Bearer ${token}` }
                 });
@@ -876,7 +901,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             setButtonLoading(submitBtn, true, originalSubmitBtnText);
 
             try {
-                const res = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/register", {
+                const res = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/register", {
                     method: "POST",
                     headers: { 
                         "Content-Type": "application/json",

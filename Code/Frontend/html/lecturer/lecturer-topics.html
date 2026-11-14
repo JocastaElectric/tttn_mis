@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
     <link rel="stylesheet" href="../../css/common/lecturer-logout-modal.css">
     <link rel="stylesheet" href="../../css/lecturer/lecturer-pending-alert.css">
+    <link rel="stylesheet" href="../../css/responsive.css">
 </head>
 <body>
 
@@ -45,6 +46,9 @@
                             <a href="lecturer-docs.html"><i class="fa-solid fa-file-pdf"></i> Tài liệu & Biểu mẫu</a>
                         </li>
                         <li class="menu-item">
+                            <a href="lecturer-notifications.html"><i class="fa-solid fa-bell"></i> Thông báo<span id="sidebarNotificationBadge" class="sidebar-notification-badge" style="display: none;">0</span></a>
+                        </li>
+                        <li class="menu-item">
                             <a href="lecturer-settings.html"><i class="fa-solid fa-gear"></i> Cài đặt tài khoản</a>
                         </li>
                     </ul>
@@ -67,10 +71,6 @@
                     <button class="btn-menu-toggle"><i class="fa-solid fa-bars"></i></button>
                 </div>
                 <div class="navbar-right">
-                    <a href="lecturer-notifications.html" class="notification-btn">
-                        <i class="fa-solid fa-bell"></i>
-                        <span id="headerBadgeCount" class="badge-count">0</span>
-                    </a>
                     <div class="user-profile">
                         <span class="avatar-icon"><i class="fa-solid fa-circle-user"></i></span>
                         <span id="userName" class="user-name">Giảng Viên</span>
@@ -100,13 +100,13 @@
                 <div class="topics-toolbar">
                     <div class="tabs-nav">
                         <button class="tab-btn active" data-tab="pending">
-                            Chờ phê duyệt <span id="badge-pending" class="tab-badge">0</span>
+                            Chờ phê duyệt <span id="badge-pending" class="tab-badge tab-badge-pending">0</span>
                         </button>
                         <button class="tab-btn" data-tab="approved">
-                            Đã phê duyệt (Đang HD) <span id="badge-approved" class="tab-badge">0</span>
+                            Đã phê duyệt (Đang HD) <span id="badge-approved" class="tab-badge tab-badge-approved">0</span>
                         </button>
                         <button class="tab-btn" data-tab="my-topics">
-                            Kho đề tài của tôi <span id="badge-my-topics" class="tab-badge">0</span>
+                            Kho đề tài của tôi <span id="badge-my-topics" class="tab-badge tab-badge-pool">0</span>
                         </button>
                     </div>
 
@@ -220,20 +220,14 @@
                     <label>Tên đề tài <span class="required">*</span></label>
                     <input type="text" id="createTitle" class="form-control" required placeholder="Nhập tên đề tài nghiên cứu / ứng dụng...">
                 </div>
-                <div class="grid-2-col">
-                    <div class="form-group">
-                        <label>Lĩnh vực chuyên môn</label>
-                        <select id="createCategory" class="form-control">
-                            <option value="Web / Ứng dụng">Web / Ứng dụng di động</option>
-                            <option value="AI / ML">AI / Machine Learning</option>
-                            <option value="Dữ liệu / Phân tích">Dữ liệu / Phân tích dữ liệu</option>
-                            <option value="Khác">Khác</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Số nhóm tối đa được đăng ký</label>
-                        <input type="number" id="createMaxGroups" class="form-control" value="1" min="1" max="3">
-                    </div>
+                <div class="form-group">
+                    <label>Lĩnh vực chuyên môn</label>
+                    <select id="createCategory" class="form-control">
+                        <option value="Web / Ứng dụng">Web / Ứng dụng di động</option>
+                        <option value="AI / ML">AI / Machine Learning</option>
+                        <option value="Dữ liệu / Phân tích">Dữ liệu / Phân tích dữ liệu</option>
+                        <option value="Khác">Khác</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Mô tả chi tiết & Mục tiêu đề tài <span class="required">*</span></label>

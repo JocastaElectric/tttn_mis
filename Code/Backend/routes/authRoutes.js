@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const {
     login,
+    getSession,
+    logout,
     getAdmins,
     getLecturers,
     getStudents,
@@ -12,11 +14,18 @@ const {
     updateStudentProfile,
     createLecturer,
     updateLecturer,
+    updateLecturerQuotas,
     deleteLecturer,
     changePassword,
-    forgotPassword
+    forgotPassword,
+    resetPassword
 } = require('../controllers/authController');
 const authMiddleware = require('../middlewares/authMiddleware');
+const {
+    loginRateLimit,
+    passwordResetRequestRateLimit,
+    passwordResetSubmitRateLimit
+} = require('../middlewares/authRateLimit');
 const multer = require('multer');
 const userImportController = require('../controllers/userImportController');
 const userExportController = require('../controllers/userExportController');
@@ -51,13 +60,22 @@ const requireSelfCode = (req, res, next) => {
     return res.status(403).json({ success: false, message: 'Bạn chỉ có thể cập nhật hồ sơ của tài khoản mình.' });
 };
 
-router.post('/login', login);
+router.post('/login', loginRateLimit, login);
+router.get('/session', authMiddleware, getSession);
+router.post('/logout', (req, res, next) => {
+    if (req.get('X-CSRF-Protection') !== '1') {
+        return res.status(403).json({ success: false, message: 'Yêu cầu không hợp lệ.' });
+    }
+    return next();
+}, logout);
 router.put('/change-password', authMiddleware, changePassword);
-router.post('/forgot-password', forgotPassword);
+router.post('/forgot-password', passwordResetRequestRateLimit, forgotPassword);
+router.post('/reset-password', passwordResetSubmitRateLimit, resetPassword);
 router.get('/admins', authMiddleware, requireRole('ADMIN'), getAdmins);
 router.get('/lecturers/export', authMiddleware, requireRole('ADMIN'), userExportController.exportLecturers);
 router.get('/lecturers', authMiddleware, requireRole('ADMIN', 'STUDENT'), getLecturers);
 router.post('/lecturers', authMiddleware, requireRole('ADMIN'), createLecturer);
+router.put('/lecturers/bulk-quota', authMiddleware, requireRole('ADMIN'), updateLecturerQuotas);
 router.put('/lecturers/:user_code', authMiddleware, requireRole('ADMIN'), updateLecturer);
 router.delete('/lecturers/:user_code', authMiddleware, requireRole('ADMIN'), deleteLecturer);
 router.get('/students/export', authMiddleware, requireRole('ADMIN'), userExportController.exportStudents);

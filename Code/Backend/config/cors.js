@@ -31,11 +31,22 @@ function getAllowedOrigins(value = process.env.CORS_ORIGINS) {
     return [...new Set(origins.map(validateOrigin))];
 }
 
-function createCorsMiddleware() {
-    return cors({
-        origin: true, // Cho phép tất cả origin (localhost, vercel, render...)
-        credentials: true
-    });
+function createCorsMiddleware(allowedOrigins = getAllowedOrigins()) {
+    const validatedOrigins = [...new Set(allowedOrigins.map(validateOrigin))];
+    const allowedOriginSet = new Set(validatedOrigins);
+    const corsHandler = cors({ origin: validatedOrigins, credentials: true });
+
+    return (req, res, next) => {
+        const origin = req.get('Origin');
+        if (origin && !allowedOriginSet.has(origin)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Origin not allowed by CORS policy.'
+            });
+        }
+
+        return corsHandler(req, res, next);
+    };
 }
 
 module.exports = { createCorsMiddleware, getAllowedOrigins };

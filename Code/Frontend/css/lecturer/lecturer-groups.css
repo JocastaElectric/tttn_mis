@@ -117,6 +117,11 @@
     color: #ef4444;
 }
 
+.tag-neutral {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
 /* Tiêu đề đề tài */
 .group-topic-title h3 {
     font-size: 15px;
@@ -221,6 +226,7 @@
 
 .bg-blue { background-color: #2563eb; }
 .bg-orange { background-color: #f97316; }
+.bg-neutral { background-color: #94a3b8; }
 
 /* Nút Hành động trong thẻ */
 .group-card-actions {

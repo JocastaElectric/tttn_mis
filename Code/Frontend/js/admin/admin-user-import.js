@@ -11,15 +11,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const errorsList = document.getElementById("importErrors");
     const previewButton = document.getElementById("previewImportBtn");
     const importButton = document.getElementById("confirmImportBtn");
-    const token = () => {
-        try {
-            const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-            return auth?.user?.role === "ADMIN" ? auth.token : null;
-        } catch (error) {
-            console.error("Không thể đọc phiên đăng nhập quản trị viên:", error);
-            return null;
-        }
-    };
 
     let previewValidCount = 0;
     const endpoint = `${window.APP_CONFIG.API_BASE_URL}/api/auth/import/${kind}`;
@@ -93,15 +84,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function sendFile(url, method) {
-        const authToken = token();
-        if (!authToken) throw new Error("Phiên Admin không hợp lệ. Vui lòng đăng nhập lại.");
+        if (!await window.verifyAuthSession("ADMIN")) {
+            throw new Error("Không thể xác minh phiên Admin.");
+        }
         if (!fileInput.files[0]) throw new Error("Vui lòng chọn file Excel.");
 
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method,
-            headers: { Authorization: `Bearer ${authToken}` },
             body: formData
         });
         const result = await response.json();
@@ -124,11 +115,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("downloadTemplateBtn").addEventListener("click", async () => {
         try {
-            const authToken = token();
-            if (!authToken) throw new Error("Phiên Admin không hợp lệ. Vui lòng đăng nhập lại.");
-            const response = await fetch(`${endpoint}/template`, {
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
+            if (!await window.verifyAuthSession("ADMIN")) return;
+            const response = await apiFetch(`${endpoint}/template`);
             if (!response.ok) {
                 const result = await response.json();
                 throw new Error(result.message || "Không tải được file mẫu.");
@@ -179,7 +167,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await sendFile(endpoint, "POST");
             summary.textContent = `Đã nhập ${data.imported_count}/${data.total_rows} tài khoản.`;
             renderErrors(data.errors);
-            setMessage(`${data.message} Mật khẩu mặc định: 123456.`, data.imported_count ? "success" : "error");
+            setMessage(data.message, data.imported_count ? "success" : "error");
             previewValidCount = 0;
             if (data.imported_count) {
                 window.dispatchEvent(new CustomEvent("users-imported"));

@@ -13,19 +13,35 @@ dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/tttn_db'; 
 
+const seedCollections = [
+    { name: 'users', model: User },
+    { name: 'topics', model: Topic },
+    { name: 'groups', model: Group },
+    { name: 'documents', model: Document },
+    { name: 'meetings', model: Meeting },
+    { name: 'todos', model: Todo }
+];
+
+const assertCollectionsEmpty = async (collections) => {
+    const counts = await Promise.all(collections.map(async ({ name, model }) => ({
+        name,
+        count: await model.countDocuments({})
+    })));
+    const populatedCollections = counts.filter(collection => collection.count > 0);
+
+    if (populatedCollections.length > 0) {
+        const names = populatedCollections.map(collection => collection.name).join(', ');
+        throw new Error(`Từ chối chạy seed vì các collection đã có dữ liệu: ${names}. Chỉ chạy seed trên cơ sở dữ liệu trống.`);
+    }
+};
+
 const seedData = async () => {
     try {
         await mongoose.connect(MONGO_URI);
         console.log('✅ Đã kết nối MongoDB thành công!');
 
-        // 1. DỌN SẠCH DỮ LIỆU CŨ TẤT CẢ CÁC BẢNG
-        await User.deleteMany({});
-        await Topic.deleteMany({});
-        await Group.deleteMany({});
-        await Document.deleteMany({});
-        await Meeting.deleteMany({});
-        await Todo.deleteMany({});
-        console.log('🧹 Đã xóa sạch dữ liệu cũ ở mọi collection!');
+        await assertCollectionsEmpty(seedCollections);
+        console.log('✅ Các collection liên quan đang trống.');
 
         // 2. KHỞI TẠO TÀI KHOẢN MẪU
         const salt = await bcrypt.genSalt(10);
@@ -46,7 +62,7 @@ const seedData = async () => {
              { user_code: 'SV08', password: hashedPassword, full_name: 'Võ Văn Hoàng', role: 'STUDENT', email: 'sv08@tttn.edu.vn' },
         ];
 
-        await User.insertMany(users);
+        await User.insertMany(users.map(user => ({ ...user, must_change_password: true })));
         console.log('👤 Khởi tạo tài khoản mẫu thành công!');
 
         // 3. Không tạo dữ liệu mẫu / demo nữa.
@@ -61,4 +77,8 @@ const seedData = async () => {
     }
 };
 
-seedData();
+if (require.main === module) {
+    seedData();
+}
+
+module.exports = { assertCollectionsEmpty };

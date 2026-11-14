@@ -1,8 +1,11 @@
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+    const verifiedAdminUser = await window.verifyAuthSession("ADMIN");
+    if (!verifiedAdminUser) return;
     let studentList = [];
     let currentEditingId = null;
 
     const tableBody = document.getElementById("studentTableBody");
+    const paginationControls = document.getElementById("studentsPagination");
     const searchInput = document.getElementById("searchInput");
     const classFilter = document.getElementById("classFilter");
     const statusFilter = document.getElementById("statusFilter");
@@ -18,22 +21,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const openLogoutBtn = document.getElementById("openLogoutBtn");
     const cancelLogout = document.getElementById("cancelLogout");
     const confirmLogout = document.getElementById("confirmLogout");
+    const pageSize = 10;
+    let currentPage = 1;
 
-    function getAdminToken() {
-        try {
-            const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-            return auth?.user?.role === "ADMIN" ? auth.token : null;
-        } catch (error) {
-            console.error("Không thể đọc phiên đăng nhập quản trị viên:", error);
-            return null;
-        }
+    function hasAdminSession() {
+        return Boolean(verifiedAdminUser);
     }
 
     async function fetchStudents() {
         try {
-            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/students", {
-                headers: { Authorization: `Bearer ${getAdminToken() || ""}` }
-            });
+            const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/students");
             const result = await response.json();
 
             if (!response.ok || !result.success) {
@@ -49,31 +46,38 @@ document.addEventListener("DOMContentLoaded", () => {
                 status: item.status || "NONE"
             })) : [];
 
-            renderStudents(studentList);
-            updatePageSummary(studentList.length);
+            handleFilter(false);
         } catch (error) {
             console.error("Lỗi tải sinh viên thật:", error);
             tableBody.innerHTML = `<tr><td colspan="8" class="text-center" style="padding: 20px; color: #ef4444;">Không thể tải dữ liệu sinh viên từ máy chủ.</td></tr>`;
             document.getElementById("paginationInfo").textContent = "Hiển thị 0 / 0 sinh viên";
+            window.renderAdminPagination(paginationControls, 0, 0, () => {});
         }
     }
 
-    function updatePageSummary(total) {
-        const summaryText = `Hiển thị ${total} / ${total} sinh viên`;
+    function updatePageSummary(start, end, total) {
         const paginationInfo = document.getElementById("paginationInfo");
-        if (paginationInfo) paginationInfo.textContent = summaryText;
+        if (!paginationInfo) return;
+        paginationInfo.textContent = total
+            ? `Hiển thị ${start} - ${end} trên tổng số ${total} sinh viên`
+            : "Hiển thị 0 / 0 sinh viên";
     }
 
     function renderStudents(data) {
         tableBody.innerHTML = "";
+        const totalPages = Math.ceil(data.length / pageSize);
+        currentPage = Math.max(1, Math.min(currentPage, totalPages || 1));
 
         if (data.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="8" class="text-center" style="padding: 20px; color: #94a3b8;">Không tìm thấy sinh viên phù hợp</td></tr>`;
-            updatePageSummary(0);
+            updatePageSummary(0, 0, 0);
+            window.renderAdminPagination(paginationControls, 0, 0, () => {});
             return;
         }
 
-        data.forEach(item => {
+        const startIndex = (currentPage - 1) * pageSize;
+        const pageData = data.slice(startIndex, startIndex + pageSize);
+        pageData.forEach(item => {
             let statusBadge = "";
             if (item.status === "APPROVED") {
                 statusBadge = `<span class="badge-status green">Đã có đề tài</span>`;
@@ -100,11 +104,15 @@ document.addEventListener("DOMContentLoaded", () => {
             tableBody.appendChild(tr);
         });
 
-        updatePageSummary(data.length);
+        updatePageSummary(startIndex + 1, startIndex + pageData.length, data.length);
+        window.renderAdminPagination(paginationControls, currentPage, totalPages, page => {
+            currentPage = page;
+            renderStudents(data);
+        });
         attachEvents();
     }
 
-    function handleFilter() {
+    function handleFilter(resetPage = true) {
         const query = searchInput.value.toLowerCase().trim();
         const selectedClass = classFilter.value;
         const selectedStatus = statusFilter.value;
@@ -117,6 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return matchQuery && matchClass && matchStatus;
         });
 
+        if (resetPage) currentPage = 1;
         renderStudents(filtered);
     }
 
@@ -128,7 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
         searchInput.value = "";
         classFilter.value = "";
         statusFilter.value = "";
-        renderStudents(studentList);
+        handleFilter(false);
     });
 
     openAddBtn.onclick = () => {
@@ -164,13 +173,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             let response;
             if (currentEditingId) {
-                response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/students/${currentEditingId}`, {
+                response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/students/${currentEditingId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
             } else {
-                response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/students", {
+                response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/students", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -221,16 +230,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 if (!confirmed) return;
 
-                const token = getAdminToken();
-                if (!token) {
+                if (!hasAdminSession()) {
                     showAppNotification("Phiên đăng nhập Admin không hợp lệ. Vui lòng đăng nhập lại.");
                     return;
                 }
 
                 try {
-                    const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/students/${encodeURIComponent(id)}`, {
-                        method: "DELETE",
-                        headers: { "Authorization": `Bearer ${token}` }
+                    const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/students/${encodeURIComponent(id)}`, {
+                        method: "DELETE"
                     });
                     const result = await response.json();
 

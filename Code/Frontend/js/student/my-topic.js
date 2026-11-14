@@ -10,7 +10,7 @@ function getAuthForRole(role) {
     if (activeSession) {
         try {
             const sessionAuth = JSON.parse(activeSession);
-            if (sessionAuth?.user?.role === role && sessionAuth.token) return sessionAuth;
+            if (sessionAuth?.user?.role === role) return sessionAuth;
         } catch (error) {
             sessionStorage.removeItem("activeAuth");
         }
@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!link) return;
         event.preventDefault();
         try {
-            const response = await fetch(link.href, {
+            const response = await apiFetch(link.href, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!response.ok) throw new Error("Không thể tải tệp báo cáo.");
@@ -102,7 +102,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
             if (confirmCancel) {
                 try {
-                    const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/delete/${currentTopicData._id}`, {
+                    const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/delete/${currentTopicData._id}`, {
                         method: "DELETE",
                         headers: {
                             "Authorization": `Bearer ${token}`
@@ -176,7 +176,7 @@ async function getUserDisplayName(userCode) {
     
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${userCode}`, {
+        const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/users/${userCode}`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -201,7 +201,7 @@ async function getUserDisplayName(userCode) {
 async function loadMyTopic(userCode) {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/my-topic/${userCode}`, {
+        const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/my-topic/${userCode}`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -338,7 +338,7 @@ async function renderJoinRequestState(data) {
 async function loadMilestoneSubmissionHistory(topicId) {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/submissions/topic/${encodeURIComponent(topicId)}`, {
+        const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/submissions/topic/${encodeURIComponent(topicId)}`, {
             headers: { Authorization: `Bearer ${token || ""}` }
         });
         const result = await response.json();
@@ -356,7 +356,7 @@ async function loadMilestoneSubmissionHistory(topicId) {
 async function loadStudentMilestones() {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/milestones/student", {
+        const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/milestones/student", {
             headers: { "Authorization": `Bearer ${token}` }
         });
         const result = await response.json();
@@ -713,7 +713,7 @@ function setMilestoneCompleted(mIndex, fileName, timeStr, fileInfo, milestone) {
             const button = event.currentTarget;
             button.disabled = true;
             try {
-                const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submission`, {
+                const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submission`, {
                     method: "DELETE",
                     headers: { Authorization: `Bearer ${auth?.token || ""}` }
                 });
@@ -816,7 +816,7 @@ function setMilestoneDraft(mIndex, fileName, timeStr, fileInfo, milestone) {
         const button = event.currentTarget;
         button.disabled = true;
         try {
-            const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submit`, {
+            const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submit`, {
                 method: "POST",
                 headers: { Authorization: `Bearer ${auth?.token || ""}` }
             });
@@ -847,7 +847,7 @@ function setMilestoneDraft(mIndex, fileName, timeStr, fileInfo, milestone) {
         const button = event.currentTarget;
         button.disabled = true;
         try {
-            const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submission`, {
+            const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/milestone/${mIndex}/submission`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${auth?.token || ""}` }
             });
@@ -1080,7 +1080,7 @@ function initUploadEvents(mIndex) {
                 formData.append("isDraft", "true");
 
                 // Gửi request đến Endpoint backend
-                const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/upload-milestone/${mIndex}`, {
+                const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/${currentTopicData._id}/upload-milestone/${mIndex}`, {
                     method: "POST",
                     headers: {
                         "Authorization": `Bearer ${token}`

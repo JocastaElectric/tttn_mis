@@ -1,7 +1,12 @@
 const jwt = require('jsonwebtoken');
+const getJwtSecret = require('../utils/jwtSecret');
 const ActivityLog = require('../models/ActivityLog');
+const {
+    getRoleFromRequest,
+    getTabSessionIdFromRequest,
+    getTokenFromRequest
+} = require('../utils/authCookie');
 
-const secretKey = process.env.JWT_SECRET || 'secret_key_tttn_2026';
 const ignoredPollingPaths = [
     /^\/api\/notifications\/(?:lecturer\/)?[^/]+$/,
     /^\/api\/topics\/lecturer\/[^/]+\/pending-review$/
@@ -34,12 +39,14 @@ const getActionType = req => {
 };
 
 const parseUserFromToken = (req) => {
-    const authHeader = req.headers.authorization || req.headers.Authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-
-    const token = authHeader.split(' ')[1];
+    const token = getTokenFromRequest(
+        req,
+        getRoleFromRequest(req),
+        getTabSessionIdFromRequest(req)
+    );
+    if (!token) return null;
     try {
-        return jwt.verify(token, secretKey);
+        return jwt.verify(token, getJwtSecret());
     } catch (error) {
         return null;
     }

@@ -1,13 +1,8 @@
 const API_BASE = window.APP_CONFIG.API_BASE_URL + "";
 
-document.addEventListener("DOMContentLoaded", () => {
-    const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-    const user = auth?.user || null;
-    const token = auth?.token || null;
-    if (!user || user.role !== "ADMIN" || !token) {
-        window.location.href = "../auth/index.html";
-        return;
-    }
+document.addEventListener("DOMContentLoaded", async () => {
+    const user = await window.verifyAuthSession("ADMIN");
+    if (!user) return;
 
     document.getElementById("userName").textContent = user.full_name || user.fullName || "Quản trị viên";
     const form = document.getElementById("documentForm");
@@ -17,7 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const targetFilter = document.getElementById("targetFilter");
     const message = document.getElementById("formMessage");
     let documents = [];
-    const authHeaders = { Authorization: `Bearer ${token}` };
+    const authHeaders = {};
 
     const formatDate = (value) => value ? new Date(value).toLocaleDateString("vi-VN") : "-";
     const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, char => ({
@@ -67,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadDocuments() {
         try {
-            const response = await fetch(`${API_BASE}/api/documents/admin/all`, { headers: authHeaders });
+            const response = await apiFetch(`${API_BASE}/api/documents/admin/all`, { headers: authHeaders });
             const result = await response.json();
             documents = response.ok && result.success ? result.documents || [] : [];
             renderDocuments();
@@ -77,7 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function downloadDocument(id) {
-        const response = await fetch(`${API_BASE}/api/documents/download/${id}`, { method: "PATCH", headers: authHeaders });
+        const response = await apiFetch(`${API_BASE}/api/documents/download/${id}`, { method: "PATCH", headers: authHeaders });
         const result = await response.json();
         if (!response.ok || !result.success) return showAppNotification(result.message || "Không thể tải tài liệu!");
         window.open(`${API_BASE}${result.file_path}`, "_blank");
@@ -92,7 +87,7 @@ document.addEventListener("DOMContentLoaded", () => {
             danger: true
         });
         if (!confirmed) return;
-        const response = await fetch(`${API_BASE}/api/documents/${id}`, { method: "DELETE", headers: authHeaders });
+        const response = await apiFetch(`${API_BASE}/api/documents/${id}`, { method: "DELETE", headers: authHeaders });
         const result = await response.json();
         if (!response.ok || !result.success) return showAppNotification(result.message || "Xóa tài liệu thất bại!");
         loadDocuments();
@@ -111,7 +106,7 @@ document.addEventListener("DOMContentLoaded", () => {
         button.disabled = true;
         message.textContent = "Đang tải lên...";
         try {
-            const response = await fetch(`${API_BASE}/api/documents/upload`, { method: "POST", headers: authHeaders, body: formData });
+            const response = await apiFetch(`${API_BASE}/api/documents/upload`, { method: "POST", headers: authHeaders, body: formData });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || "Gửi tài liệu thất bại!");
             form.reset();
@@ -129,6 +124,7 @@ document.addEventListener("DOMContentLoaded", () => {
     uploaderFilter.addEventListener("change", renderDocuments);
     targetFilter.addEventListener("change", renderDocuments);
     document.getElementById("logoutBtn").addEventListener("click", () => {
+        window.logoutSession();
         localStorage.removeItem("adminAuth");
         localStorage.removeItem("token");
         localStorage.removeItem("user");

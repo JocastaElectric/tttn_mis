@@ -205,6 +205,7 @@ exports.importUsers = async (req, res) => {
                 const user = {
                     user_code: row.user_code,
                     password,
+                    must_change_password: true,
                     full_name: row.full_name,
                     email: row.email,
                     role: req.importRole
@@ -244,7 +245,7 @@ exports.importUsers = async (req, res) => {
         errors.sort((a, b) => a.row - b.row);
         return res.json({
             success: true,
-            message: `Đã nhập ${importedCount}/${result.totalRows} tài khoản. Mật khẩu ban đầu là ${INITIAL_PASSWORD}.`,
+            message: `Đã nhập ${importedCount}/${result.totalRows} tài khoản. Mật khẩu ban đầu là ${INITIAL_PASSWORD}; người dùng phải đổi mật khẩu ở lần đăng nhập đầu tiên.`,
             data: {
                 imported_count: importedCount,
                 total_rows: result.totalRows,

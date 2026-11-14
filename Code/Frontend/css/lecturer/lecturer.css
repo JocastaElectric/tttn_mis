@@ -254,10 +254,10 @@ body {
 .welcome-quote { color: #2670c7 !important; font-size: 11.5px !important; font-style: italic; text-align: center; line-height: 1.5; }
 .welcome-quote i { font-style: normal; }
 
-/* KPI CARDS - CẬP NHẬT CHIA THÀNH 3 CỘT ĐỀU NHAU */
+/* KPI CARDS */
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
     gap: 16px;
     margin-top: 20px;
 }
@@ -314,6 +314,9 @@ body {
 
 .card-orange .kpi-icon { background: #fffbeb; color: #d97706; }
 .card-orange .kpi-link { color: #d97706; }
+
+.card-red .kpi-icon { background: #fef2f2; color: #dc2626; }
+.card-red .kpi-link { color: #dc2626; }
 
 /* GRID LAYOUTS */
 .margin-top-24 { margin-top: 24px; }

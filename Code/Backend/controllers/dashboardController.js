@@ -5,6 +5,9 @@ const LecturerTopic = require('../models/LecturerTopic');
 const Submission = require('../models/Submission');
 const Notification = require('../models/Notification');
 const Semester = require('../models/Semester');
+const Milestone = require('../models/Milestone');
+const { getTopicMilestoneProgress, getMilestoneProgressSeries } = require('../services/milestoneProgress');
+const { getLecturerGroupCount } = require('../services/lecturerQuota');
 
 // Kết nối linh hoạt vào Collection 'meetings'
 const MeetingModel = mongoose.models.Meeting || 
@@ -309,10 +312,6 @@ exports.getLecturerDashboard = async (req, res) => {
         console.log("2. Sample Topic tìm thấy:", sampleTopic);
         console.log("===================================================\n");
 
-        const excludeCancelledStatus = {
-            status: { $not: { $regex: /^(cancelled|rejected|da_huy|bi_tu_choi|đã hủy|bị từ chối|3|4)$/i } }
-        };
-
         // TRUY VẤN SONG SONG BẰNG PROMISE.ALL
         const [
             dbUserInfo,
@@ -352,12 +351,7 @@ exports.getLecturerDashboard = async (req, res) => {
                 ]
             }).catch(err => { console.error("Lỗi đếm revisionTopics:", err.message); return 0; }),
 
-            Topic.countDocuments({
-                $and: [
-                    lecturerFilter,
-                    excludeCancelledStatus
-                ]
-            }).catch(err => { console.error("Lỗi đếm assignedGroups:", err.message); return 0; }),
+            getLecturerGroupCount(lecturerCode),
 
             Notification.countDocuments({
                 status: 'published',
@@ -415,63 +409,41 @@ exports.getLecturerDashboard = async (req, res) => {
             Topic.find({
                 $and: [
                     lecturerFilter,
-                    excludeCancelledStatus
+                    { status: { $regex: /^(approved|da_duyet|đã duyệt|đã phê duyệt|1)$/i } },
+                    { leader_code: { $exists: true, $nin: [null, ''] } }
                 ]
             })
                 .lean()
                 .catch(() => [])
         ]);
 
-        // CHUẨN HÓA DỮ LIỆU BIỂU ĐỒ CỘT
-        const completedData = [0, 0, 0, 0];
-        const onTimeData = [0, 0, 0, 0];
-        const inProgressData = [0, 0, 0, 0];
-        const lateData = [0, 0, 0, 0];
-
-        (activeTopicsForProgress || []).forEach(topic => {
-            const mStr = String(
-                topic.milestone || topic.milestone_step || topic.current_milestone || topic.currentMilestone || topic.step || "1"
-            );
-
-            let mIndex = 0;
-            if (mStr.includes("2") || mStr === "2") mIndex = 1;
-            else if (mStr.includes("3") || mStr === "3") mIndex = 2;
-            else if (mStr.includes("4") || mStr.includes("5") || mStr >= "4") mIndex = 3;
-
-            const progStatus = String(
-                topic.progress_status || topic.progressStatus || topic.progress || topic.milestone_status || topic.status || ""
-            ).toLowerCase();
-
-            const dueDateValue = topic.due_date || topic.dueDate || topic.deadline || new Date(Date.now() + 86400000 * 7);
-            const dueDate = new Date(dueDateValue);
-            const isOverdue = now > dueDate;
-
-            if (progStatus.includes("hoan_thanh") || progStatus.includes("completed") || progStatus.includes("hoàn thành") || progStatus.includes("đã nộp")) {
-                completedData[mIndex]++;
-            } else if (progStatus.includes("tre") || progStatus.includes("trễ") || progStatus.includes("late") || progStatus.includes("overdue") || (isOverdue && !progStatus.includes("approved"))) {
-                lateData[mIndex]++;
-            } else if (progStatus.includes("dang") || progStatus.includes("đang") || progStatus.includes("in_progress") || progStatus.includes("doing")) {
-                inProgressData[mIndex]++;
-            } else {
-                onTimeData[mIndex]++;
-            }
-        });
-
-        const milestoneProgress = {
-            labels: ["Mốc 1", "Mốc 2", "Mốc 3", "Mốc 4"],
-            series: [
-                { name: "Hoàn thành", data: completedData },
-                { name: "Đúng hạn", data: onTimeData },
-                { name: "Đang thực hiện", data: inProgressData },
-                { name: "Trễ hạn", data: lateData }
-            ]
-        };
+        const progressMilestones = await Milestone.find({
+            lecturerCode,
+            topicId: null
+        }).sort({ step: 1 }).lean();
+        const progressSubmissions = await Submission.find({
+            topic_id: { $in: (activeTopicsForProgress || []).map(topic => topic._id) },
+            is_draft: { $ne: true }
+        }).lean();
+        const progressByTopic = getTopicMilestoneProgress(
+            activeTopicsForProgress || [],
+            progressMilestones,
+            progressSubmissions,
+            now
+        );
+        const milestoneProgress = getMilestoneProgressSeries(
+            activeTopicsForProgress || [],
+            progressByTopic,
+            progressMilestones.map(milestone => milestone.step)
+        );
+        const lateGroups = [...progressByTopic.values()].filter(progress => progress.is_late).length;
 
         const stats = {
             assignedGroups: assignedGroups || 0,
             approvedTopics: approvedTopics || 0,
             pendingTopics: pendingTopics || 0,
             revisionTopics: revisionTopics || 0,
+            lateGroups,
             totalTopics: (approvedTopics || 0) + (pendingTopics || 0) + (revisionTopics || 0)
         };
 

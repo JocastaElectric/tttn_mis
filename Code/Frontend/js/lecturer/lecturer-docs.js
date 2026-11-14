@@ -57,7 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function fetchLecturerGroups() {
         try {
-            const response = await fetch(`${API_BASE}/api/groups/lecturer/${lecturerCode}`, { headers: authHeaders });
+            const response = await apiFetch(`${API_BASE}/api/groups/lecturer/${lecturerCode}`, { headers: authHeaders });
             const result = await response.json();
 
             if (!docTargetSelect) return;
@@ -105,7 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function fetchMyDocuments() {
         try {
-            const response = await fetch(`${API_BASE}/api/documents/lecturer/${lecturerCode}`, { headers: authHeaders });
+            const response = await apiFetch(`${API_BASE}/api/documents/lecturer/${lecturerCode}`, { headers: authHeaders });
             const data = await response.json();
 
             if (!data.success) {
@@ -145,7 +145,7 @@ document.addEventListener("DOMContentLoaded", () => {
         facultyDocsGrid.querySelectorAll(".btn-download-faculty").forEach((button) => {
             button.addEventListener("click", async (event) => {
                 event.preventDefault();
-                const response = await fetch(`${API_BASE}/api/documents/download/${button.dataset.id}`, { method: "PATCH", headers: authHeaders });
+                const response = await apiFetch(`${API_BASE}/api/documents/download/${button.dataset.id}`, { method: "PATCH", headers: authHeaders });
                 const result = await response.json();
                 if (!response.ok || !result.success) {
                     showAppNotification(result.message || "Không thể tải tài liệu!");
@@ -276,7 +276,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             try {
-                const response = await fetch(`${API_BASE}/api/documents/upload`, {
+                const response = await apiFetch(`${API_BASE}/api/documents/upload`, {
                     method: "POST",
                     headers: authHeaders,
                     body: formData
@@ -323,7 +323,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!confirmed) return;
 
                 try {
-                    const response = await fetch(`${API_BASE}/api/documents/${docId}`, { method: "DELETE", headers: authHeaders });
+                    const response = await apiFetch(`${API_BASE}/api/documents/${docId}`, { method: "DELETE", headers: authHeaders });
                     const data = await response.json();
 
                     if (!response.ok || !data.success) {
@@ -349,7 +349,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const docId = row.dataset.id;
 
                 try {
-                    const response = await fetch(`${API_BASE}/api/documents/download/${docId}`, { method: "PATCH", headers: authHeaders });
+                    const response = await apiFetch(`${API_BASE}/api/documents/download/${docId}`, { method: "PATCH", headers: authHeaders });
                     const data = await response.json();
 
                     if (!response.ok || !data.success) {

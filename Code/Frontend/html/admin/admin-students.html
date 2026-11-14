@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="../../css/common/confirm-dialog.css">
     <link rel="stylesheet" href="../../css/admin/user-import.css">
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
+    <link rel="stylesheet" href="../../css/responsive.css">
 </head>
 <body>
 
@@ -185,11 +186,7 @@
                     <!-- PHÂN TRANG -->
                     <div class="table-footer">
                         <span class="pagination-text" id="paginationInfo">Hiển thị 1 - 5 trên tổng số 5 sinh viên</span>
-                        <div class="pagination-btns">
-                            <button class="page-btn" disabled><i class="fa-solid fa-chevron-left"></i></button>
-                            <button class="page-btn active">1</button>
-                            <button class="page-btn"><i class="fa-solid fa-chevron-right"></i></button>
-                        </div>
+                        <div class="pagination-btns" id="studentsPagination" aria-label="Phân trang danh sách sinh viên"></div>
                     </div>
                 </div>
 
@@ -245,7 +242,7 @@
                 <h3>Import danh sách sinh viên</h3>
                 <button type="button" class="close-modal import-close" id="closeImportModal" aria-label="Đóng">&times;</button>
             </div>
-            <p class="import-help">Tải file mẫu để dùng đúng tên cột. Hỗ trợ .xlsx, tối đa 5 MB và 1.000 dòng. Tài khoản mới có mật khẩu ban đầu là <strong>123456</strong>.</p>
+            <p class="import-help">Tải file mẫu để dùng đúng tên cột. Hỗ trợ .xlsx, tối đa 5 MB và 1.000 dòng. Tài khoản mới có mật khẩu ban đầu là <strong>123456</strong> và phải đổi mật khẩu ở lần đăng nhập đầu tiên.</p>
             <div class="import-toolbar">
                 <button type="button" class="btn btn-outline" id="downloadTemplateBtn"><i class="fa-solid fa-download"></i> Tải file mẫu</button>
                 <input type="file" id="importFile" accept=".xlsx">
@@ -279,6 +276,7 @@
 
     <script src="../../js/config.js"></script>
     <script src="../../js/common/confirm-dialog.js"></script>
+    <script src="../../js/common/admin-pagination.js"></script>
     <script src="../../js/admin/admin-students.js"></script>
     <script src="../../js/admin/admin-user-import.js"></script>
     <script src="../../js/admin/admin-user-export.js"></script>

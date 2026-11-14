@@ -1,22 +1,9 @@
-function getAdminSession() {
-    try {
-        const session = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-        return session?.user?.role === "ADMIN" && session.token ? session : null;
-    } catch (error) {
-        sessionStorage.removeItem("activeAuth");
-        return null;
-    }
-}
-
 document.addEventListener("DOMContentLoaded", async () => {
-    const auth = getAdminSession();
-    if (!auth) {
-        window.location.href = "../auth/index.html";
-        return;
-    }
+    const user = await window.verifyAuthSession("ADMIN");
+    if (!user) return;
 
     const userName = document.getElementById("userName");
-    userName.textContent = auth.user.full_name || auth.user.fullName || "Quản trị viên";
+    userName.textContent = user.full_name || user.fullName || "Quản trị viên";
 
     const logoutModal = document.getElementById("logoutModal");
     document.getElementById("logoutBtn").addEventListener("click", () => {
@@ -43,11 +30,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     let semesters = [];
 
     const request = async (url, options = {}) => {
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             ...options,
             headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${auth.token}`,
                 ...options.headers
             }
         });

@@ -1,16 +1,9 @@
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
 
     const API_BASE_URL = window.APP_CONFIG.API_BASE_URL + "/api/notifications";
-    let adminAuth = null;
-    try {
-        adminAuth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-    } catch (error) {
-        console.error("Không thể đọc phiên quản trị:", error);
-    }
-    const authHeaders = headers => ({
-        ...headers,
-        Authorization: `Bearer ${adminAuth?.token || ""}`
-    });
+    const user = await window.verifyAuthSession("ADMIN");
+    if (!user) return;
+    const authHeaders = headers => ({ ...headers });
     let notificationList = [];
 
     let deleteTargetId = null;
@@ -53,7 +46,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadNotifications() {
         try {
-            const response = await fetch(`${API_BASE_URL}/admin/all`, {
+            const response = await apiFetch(`${API_BASE_URL}/admin/all`, {
                 headers: authHeaders({})
             });
             const result = await response.json();
@@ -221,13 +214,13 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             let response;
             if (id) {
-                response = await fetch(`${API_BASE_URL}/${id}`, {
+                response = await apiFetch(`${API_BASE_URL}/${id}`, {
                     method: 'PUT',
                     headers: authHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify(payload)
                 });
             } else {
-                response = await fetch(API_BASE_URL, {
+                response = await apiFetch(API_BASE_URL, {
                     method: 'POST',
                     headers: authHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify(payload)
@@ -323,7 +316,7 @@ document.addEventListener("DOMContentLoaded", () => {
     confirmDeleteBtn.onclick = async () => {
         if (deleteTargetId !== null) {
             try {
-                const response = await fetch(`${API_BASE_URL}/${deleteTargetId}`, {
+                const response = await apiFetch(`${API_BASE_URL}/${deleteTargetId}`, {
                     method: 'DELETE',
                     headers: authHeaders({})
                 });

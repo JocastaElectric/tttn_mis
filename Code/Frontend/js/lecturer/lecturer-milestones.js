@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function requestMilestones(path, method = "GET", body) {
         const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-        if (!auth?.token) throw new Error("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+        if (auth?.user?.role !== "LECTURER") throw new Error("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
 
         const options = {
             method,
@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
             options.body = JSON.stringify(body);
         }
 
-        const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/milestones${path}`, options);
+        const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/milestones${path}`, options);
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || "Không thể lưu milestone.");
         return result;

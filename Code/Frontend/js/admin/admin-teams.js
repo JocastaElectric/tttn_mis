@@ -1,15 +1,7 @@
 document.addEventListener("DOMContentLoaded", async () => {
-    let adminAuth = null;
-    try {
-        adminAuth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-    } catch (error) {
-        sessionStorage.removeItem("activeAuth");
-    }
-    if (!adminAuth?.token || adminAuth.user?.role !== "ADMIN") {
-        window.location.href = "../auth/index.html";
-        return;
-    }
-    const authHeaders = { Authorization: `Bearer ${adminAuth.token}` };
+    const verifiedAdminUser = await window.verifyAuthSession("ADMIN");
+    if (!verifiedAdminUser) return;
+    const authHeaders = {};
 
     let lecturerList = [];
     let teamList = [];
@@ -17,6 +9,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // DOM ELEMENTS
     const tableBody = document.getElementById("teamTableBody");
+    const paginationControls = document.getElementById("teamsPagination");
     const searchInput = document.getElementById("searchInput");
     const statusFilter = document.getElementById("statusFilter");
     const resetFilterBtn = document.getElementById("resetFilterBtn");
@@ -32,10 +25,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const openLogoutBtn = document.getElementById("openLogoutBtn");
     const cancelLogout = document.getElementById("cancelLogout");
     const confirmLogout = document.getElementById("confirmLogout");
+    const pageSize = 10;
+    let currentPage = 1;
 
     async function fetchLecturers() {
         try {
-            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/lecturers", {
+            const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/auth/lecturers", {
                 headers: authHeaders
             });
             const result = await response.json();
@@ -54,7 +49,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     async function fetchTeams() {
         try {
-            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/admin/all", {
+            const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/topics/admin/all", {
                 headers: authHeaders
             });
             const result = await response.json();
@@ -77,19 +72,25 @@ document.addEventListener("DOMContentLoaded", async () => {
             console.error("Lỗi tải nhóm thật:", error);
             tableBody.innerHTML = `<tr><td colspan="6" class="text-center" style="padding: 20px; color: #ef4444;">Không thể tải dữ liệu nhóm từ máy chủ.</td></tr>`;
             document.getElementById("paginationInfo").textContent = "Hiển thị 0 / 0 nhóm";
+            window.renderAdminPagination(paginationControls, 0, 0, () => {});
         }
     }
 
     function renderTeams(data) {
         tableBody.innerHTML = "";
+        const totalPages = Math.ceil(data.length / pageSize);
+        currentPage = Math.max(1, Math.min(currentPage, totalPages || 1));
 
         if (data.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="6" class="text-center" style="padding: 20px; color: #94a3b8;">Không tìm thấy nhóm phù hợp</td></tr>`;
             document.getElementById("paginationInfo").textContent = "Hiển thị 0 / 0 nhóm";
+            window.renderAdminPagination(paginationControls, 0, 0, () => {});
             return;
         }
 
-        data.forEach(item => {
+        const startIndex = (currentPage - 1) * pageSize;
+        const pageData = data.slice(startIndex, startIndex + pageSize);
+        pageData.forEach(item => {
             const tr = document.createElement("tr");
 
             const isAssigned = !!item.lecturerHD;
@@ -119,7 +120,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             tableBody.appendChild(tr);
         });
 
-        document.getElementById("paginationInfo").textContent = `Hiển thị 1 - ${data.length} trên tổng số ${data.length} nhóm`;
+        document.getElementById("paginationInfo").textContent =
+            `Hiển thị ${startIndex + 1} - ${startIndex + pageData.length} trên tổng số ${data.length} nhóm`;
+        window.renderAdminPagination(paginationControls, currentPage, totalPages, page => {
+            currentPage = page;
+            renderTeams(data);
+        });
         attachEvents();
     }
 
@@ -140,6 +146,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             return matchQuery && matchStatus;
         });
 
+        currentPage = 1;
         renderTeams(filtered);
     }
 
@@ -193,7 +200,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
 
             try {
-                const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/admin/assign-lecturer/${selectedTeamId}`, {
+                const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/topics/admin/assign-lecturer/${selectedTeamId}`, {
                     method: "PATCH",
                     headers: {
                         "Content-Type": "application/json",

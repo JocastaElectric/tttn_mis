@@ -1,4 +1,6 @@
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+    const verifiedAdminUser = await window.verifyAuthSession("ADMIN");
+    if (!verifiedAdminUser) return;
 
     // 1. DỮ LIỆU MILESTONES MẪU
     let milestoneList = [

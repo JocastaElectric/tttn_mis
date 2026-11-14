@@ -9,26 +9,13 @@ document.addEventListener("DOMContentLoaded", () => {
         : "danh-sach-giang-vien.xlsx";
 
     button.addEventListener("click", async () => {
-        let token;
-        try {
-            const auth = JSON.parse(sessionStorage.getItem("activeAuth") || "null");
-            token = auth?.user?.role === "ADMIN" ? auth.token : null;
-        } catch (error) {
-            console.error("Không thể đọc phiên đăng nhập quản trị viên:", error);
-        }
-
-        if (!token) {
-            window.showAppNotification?.("Phiên Admin không hợp lệ. Vui lòng đăng nhập lại.");
-            return;
-        }
+        if (!await window.verifyAuthSession("ADMIN")) return;
 
         const originalLabel = button.innerHTML;
         button.disabled = true;
         button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xuất...';
         try {
-            const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/${kind}/export`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/auth/${kind}/export`);
             if (!response.ok) {
                 const result = await response.json().catch(() => ({}));
                 throw new Error(result.message || "Không thể xuất danh sách Excel.");

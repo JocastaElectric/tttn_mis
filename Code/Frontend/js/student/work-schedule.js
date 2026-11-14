@@ -6,7 +6,7 @@ function getAuthForRole(role) {
     if (activeSession) {
         try {
             const sessionAuth = JSON.parse(activeSession);
-            if (sessionAuth?.user?.role === role && sessionAuth.token) return sessionAuth;
+            if (sessionAuth?.user?.role === role) return sessionAuth;
         } catch (error) {
             sessionStorage.removeItem("activeAuth");
         }
@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     async function loadAvailabilitySlots() {
         if (!availabilitySelect || !currentScheduleTopicInfo?.lecturer_code) return;
         try {
-            const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/availability/${encodeURIComponent(currentScheduleTopicInfo.lecturer_code)}`, {
+            const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/availability/${encodeURIComponent(currentScheduleTopicInfo.lecturer_code)}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             const result = await response.json();
@@ -124,7 +124,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
 
             try {
-                const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/schedule/meetings/create", {
+                const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/schedule/meetings/create", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -180,7 +180,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         try {
-            const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/schedule/todos/add", {
+            const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/schedule/todos/add", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -258,7 +258,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function loadScheduleData(studentCode) {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/my-schedule/${studentCode}`, {
+        const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/my-schedule/${studentCode}`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -637,7 +637,7 @@ function renderTodoList(todos) {
 async function toggleTodoStatus(todoId) {
     try {
         const token = getAuthForRole("STUDENT")?.token;
-        const res = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/todos/toggle/${todoId}`, {
+        const res = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/schedule/todos/toggle/${todoId}`, {
             method: "PATCH",
             headers: {
                 "Authorization": `Bearer ${token}`

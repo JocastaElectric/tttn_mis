@@ -9,7 +9,7 @@ function getAuthForRole(role) {
     if (activeSession) {
         try {
             const sessionAuth = JSON.parse(activeSession);
-            if (sessionAuth?.user?.role === role && sessionAuth.token) return sessionAuth;
+            if (sessionAuth?.user?.role === role) return sessionAuth;
         } catch (error) {
             sessionStorage.removeItem("activeAuth");
         }
@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const token = auth?.token;
     const userRaw = auth?.user ? JSON.stringify(auth.user) : null;
 
-    if (!token || !userRaw || userRaw === "null") {
+    if (!userRaw || userRaw === "null") {
         console.warn("Không tìm thấy Token hoặc User! Chuyển hướng về trang login...");
         window.location.href = "../auth/index.html";
         return;
@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     displayUserFromStorage(user);
 
     try {
-        const response = await fetch(window.APP_CONFIG.API_BASE_URL + "/api/v1/lecturer/dashboard", {
+        const response = await apiFetch(window.APP_CONFIG.API_BASE_URL + "/api/v1/lecturer/dashboard", {
             method: "GET",
             headers: {
                 "Authorization": `Bearer ${token}`,
@@ -132,6 +132,7 @@ function updateUserInfo(fullName, userCode) {
 }
 
 function handleLogout() {
+    window.logoutSession();
     localStorage.removeItem("lecturerAuth");
     if (localStorage.getItem("activeRole") === "LECTURER") {
         localStorage.removeItem("activeRole");
@@ -159,10 +160,12 @@ function renderKPIs(stats) {
     const elAssigned = document.getElementById("statAssignedGroups");
     const elApproved = document.getElementById("statApprovedTopics");
     const elPending = document.getElementById("statPendingTopics");
+    const elLateGroups = document.getElementById("statLateGroups");
 
     if (elAssigned) elAssigned.textContent = stats.assignedGroups ?? 0;
     if (elApproved) elApproved.textContent = stats.approvedTopics ?? 0;
     if (elPending) elPending.textContent = stats.pendingTopics ?? 0;
+    if (elLateGroups) elLateGroups.textContent = stats.lateGroups ?? 0;
 }
 
 function renderProgressChart(progressData) {
@@ -170,8 +173,9 @@ function renderProgressChart(progressData) {
     if (!ctxProgressEl || !progressData || typeof Chart === "undefined") return;
 
     const datasetStyles = [
-        { backgroundColor: '#2563eb' },
         { backgroundColor: '#16a34a' },
+        { backgroundColor: '#94a3b8' },
+        { backgroundColor: '#2563eb' },
         { backgroundColor: '#f59e0b' },
         { backgroundColor: '#dc3545' }
     ];

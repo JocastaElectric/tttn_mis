@@ -3,7 +3,7 @@ function getAuthForRole(role) {
     if (activeSession) {
         try {
             const sessionAuth = JSON.parse(activeSession);
-            if (sessionAuth?.user?.role === role && sessionAuth.token) return sessionAuth;
+            if (sessionAuth?.user?.role === role) return sessionAuth;
         } catch (error) {
             sessionStorage.removeItem("activeAuth");
         }
@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // DOM Elements
     const notifContainer = document.getElementById("notifContainer");
     const emptyNotif = document.getElementById("emptyNotif");
-    const headerBadgeCount = document.getElementById("headerBadgeCount");
+    const sidebarNotificationBadge = document.getElementById("sidebarNotificationBadge");
     const countAll = document.getElementById("countAll");
     const countUnread = document.getElementById("countUnread");
 
@@ -63,7 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const endpoint = isLecturerPage
                 ? `${window.APP_CONFIG.API_BASE_URL}/api/notifications/lecturer/${currentUserCode}`
                 : `${window.APP_CONFIG.API_BASE_URL}/api/notifications/${currentUserCode}`;
-            const response = await fetch(endpoint, {
+            const response = await apiFetch(endpoint, {
                 headers: { Authorization: `Bearer ${auth.token}` }
             });
             const data = await response.json();
@@ -163,9 +163,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (countAll) countAll.textContent = total;
         if (countUnread) countUnread.textContent = unreadCount;
 
-        if (headerBadgeCount) {
-            headerBadgeCount.textContent = unreadCount;
-            headerBadgeCount.style.display = unreadCount > 0 ? "inline-block" : "none";
+        if (sidebarNotificationBadge) {
+            sidebarNotificationBadge.textContent = unreadCount;
+            sidebarNotificationBadge.style.display = unreadCount > 0 ? "inline-block" : "none";
         }
     };
 
@@ -192,7 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             try {
-                const response = await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/notifications/read-all/${currentUserCode}`, {
+                const response = await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/notifications/read-all/${currentUserCode}`, {
                     method: 'PATCH',
                     headers: { Authorization: `Bearer ${auth.token}` }
                 });
@@ -249,7 +249,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!item.is_read) {
             try {
-                await fetch(`${window.APP_CONFIG.API_BASE_URL}/api/notifications/read/${item._id}`, {
+                await apiFetch(`${window.APP_CONFIG.API_BASE_URL}/api/notifications/read/${item._id}`, {
                     method: 'PATCH',
                     headers: { Authorization: `Bearer ${auth.token}` }
                 });

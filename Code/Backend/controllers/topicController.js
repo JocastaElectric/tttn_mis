@@ -9,12 +9,33 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const { notifyUsers, notifyTopicStudents } = require('../services/notificationService');
+const { getLecturerQuotaStatus } = require('../services/lecturerQuota');
+const { getTopicMilestoneProgress } = require('../services/milestoneProgress');
+const { getAvailablePoolTopicSlot } = require('../services/poolTopicCapacity');
 
 const activeTopicStatuses = ['PENDING', 'APPROVED', 'NEED_REVISION'];
 const codeRegex = value => new RegExp(
     `^${String(value || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
     'i'
 );
+
+async function ensureLecturerHasCapacity(res, lecturerCode, excludeTopicId) {
+    const quotaStatus = await getLecturerQuotaStatus(lecturerCode, excludeTopicId);
+    if (!quotaStatus.found) {
+        res.status(404).json({ success: false, message: 'Không tìm thấy giảng viên được phân công.' });
+        return false;
+    }
+    if (!quotaStatus.available) {
+        res.status(409).json({
+            success: false,
+            message: `Giảng viên ${lecturerCode} đã đủ số nhóm hướng dẫn (${quotaStatus.assigned}/${quotaStatus.quota}).`,
+            assigned: quotaStatus.assigned,
+            quota: quotaStatus.quota
+        });
+        return false;
+    }
+    return true;
+}
 
 function getRegistrationEndOfDay(date) {
     const dateOnly = new Date(date).toISOString().slice(0, 10);
@@ -41,18 +62,47 @@ async function findActiveTitleConflict(title, excludeTopicId) {
     if (!titleKey) return null;
 
     const exclude = excludeTopicId ? { _id: { $ne: excludeTopicId } } : {};
-    const indexedConflict = await Topic.findOne({ active_title_key: titleKey, ...exclude })
-        .select('_id title leader_code')
-        .lean();
-    if (indexedConflict) return indexedConflict;
+    const indexedConflicts = await Topic.find({
+        active_title_key: titleKey,
+        status: { $in: activeTopicStatuses },
+        ...exclude
+    }).select('_id title leader_code active_pool_topic_id pool_topic_id').lean();
+    if (indexedConflicts.length > 0) return indexedConflicts[0];
 
     const legacyTopics = await Topic.find({
         status: { $in: activeTopicStatuses },
         active_title_key: { $exists: false },
         ...exclude
-    }).select('_id title leader_code').lean();
+    }).select('_id title leader_code active_pool_topic_id pool_topic_id').lean();
 
-    return legacyTopics.find(topic => normalizeTopicTitle(topic.title) === titleKey) || null;
+    return legacyTopics.find(topic =>
+        normalizeTopicTitle(topic.title) === titleKey
+    ) || null;
+}
+
+async function getActivePoolTopicGroups(poolTopicId) {
+    return Topic.find({
+        status: { $in: activeTopicStatuses },
+        $or: [
+            { active_pool_topic_id: poolTopicId },
+            { pool_topic_id: poolTopicId }
+        ]
+    }).select('_id leader_code active_pool_topic_slot').lean();
+}
+
+async function ensurePoolTopicCapacity(res, poolTopic, leaderCode) {
+    const activeGroups = await getActivePoolTopicGroups(poolTopic._id);
+    const maxGroups = 1;
+    const availableSlot = getAvailablePoolTopicSlot(activeGroups, maxGroups, leaderCode);
+    if (availableSlot !== null) return availableSlot;
+
+    res.status(409).json({
+        success: false,
+        message: `Đề tài đã đủ số nhóm đăng ký (${activeGroups.length}/${maxGroups}).`,
+        registeredGroups: activeGroups.length,
+        maxGroups
+    });
+    return null;
 }
 
 async function removeUploadedReportFile(filePath) {
@@ -138,6 +188,7 @@ exports.registerTopic = async (req, res) => {
         }
 
         let selectedPoolTopic = null;
+        let selectedPoolTopicSlot = null;
         if (registrationRole === 'LEADER' && selectedPoolTopicId) {
             if (!mongoose.Types.ObjectId.isValid(selectedPoolTopicId)) {
                 return res.status(400).json({ message: 'Đề tài trong kho không hợp lệ. Vui lòng chọn lại!' });
@@ -148,21 +199,8 @@ exports.registerTopic = async (req, res) => {
                 return res.status(404).json({ message: 'Đề tài này hiện không khả dụng trong kho!' });
             }
 
-            const occupiedPoolTopic = await Topic.findOne({
-                active_pool_topic_id: selectedPoolTopic._id
-            }).select('leader_code');
-            if (occupiedPoolTopic && normalizeCode(occupiedPoolTopic.leader_code) !== leader_code) {
-                return res.status(409).json({
-                    message: 'Đề tài này đã được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
-                });
-            }
-
-            if ((selectedPoolTopic.status === 'REGISTERED' || selectedPoolTopic.is_registered === true) &&
-                (!occupiedPoolTopic || normalizeCode(occupiedPoolTopic.leader_code) !== leader_code)) {
-                return res.status(409).json({
-                    message: 'Đề tài này đã được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
-                });
-            }
+            selectedPoolTopicSlot = await ensurePoolTopicCapacity(res, selectedPoolTopic, leader_code);
+            if (selectedPoolTopicSlot === null) return;
 
             lecturer_code = selectedPoolTopic.lecturer_code;
             title = selectedPoolTopic.title;
@@ -367,6 +405,13 @@ exports.registerTopic = async (req, res) => {
             });
         }
 
+        const alreadyUsesLecturerQuota = existingTopic &&
+            activeTopicStatuses.includes(existingTopic.status) &&
+            String(existingTopic.lecturer_code || '').trim().toUpperCase() ===
+                String(lecturer_code || '').trim().toUpperCase();
+        if (!alreadyUsesLecturerQuota &&
+            !await ensureLecturerHasCapacity(res, lecturer_code, existingTopic?._id)) return;
+
         if (existingTopic) {
             if (existingTopic.status === 'APPROVED') {
                 return res.status(400).json({ message: 'Đề tài đã được phê duyệt, bạn không thể chỉnh sửa nữa!' });
@@ -398,8 +443,10 @@ exports.registerTopic = async (req, res) => {
             existingTopic.title = title;
             existingTopic.description = description;
             existingTopic.category = category || existingTopic.category || 'Web / Ứng dụng';
+            existingTopic.max_groups = selectedPoolTopic ? 1 : existingTopic.max_groups || 1;
             existingTopic.pool_topic_id = selectedPoolTopic?._id;
             existingTopic.active_pool_topic_id = selectedPoolTopic?._id;
+            existingTopic.active_pool_topic_slot = selectedPoolTopic ? selectedPoolTopicSlot : undefined;
             existingTopic.active_title_key = normalizeTopicTitle(title) || undefined;
             existingTopic.status = 'PENDING';
             existingTopic.feedback = '';
@@ -459,9 +506,11 @@ exports.registerTopic = async (req, res) => {
             title,
             description,
             category: category || 'Web / Ứng dụng',
+            max_groups: 1,
             source: 'STUDENT',
             pool_topic_id: selectedPoolTopic?._id,
             active_pool_topic_id: selectedPoolTopic?._id,
+            active_pool_topic_slot: selectedPoolTopic ? selectedPoolTopicSlot : undefined,
             active_title_key: normalizeTopicTitle(title) || undefined,
             status: 'PENDING'
         });
@@ -480,9 +529,10 @@ exports.registerTopic = async (req, res) => {
     } catch (error) {
         console.error("Lỗi đăng ký/cập nhật đề tài:", error);
         if (error.code === 11000 &&
-            (error.keyPattern?.active_pool_topic_id || error.keyPattern?.active_title_key)) {
+            (error.keyPattern?.active_pool_topic_id || error.keyPattern?.active_pool_topic_slot ||
+                error.keyPattern?.active_title_key)) {
             return res.status(409).json({
-                message: 'Đề tài này vừa được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
+                message: 'Đề tài vừa được nhóm khác đăng ký hết chỉ tiêu. Vui lòng thử lại hoặc chọn đề tài khác!'
             });
         }
         return res.status(500).json({ message: 'Lỗi máy chủ khi xử lý đề tài!' });
@@ -576,14 +626,15 @@ exports.getMyTopic = async (req, res) => {
                     name: sub.file_name || sub.original_name || `Bài nộp mốc ${step}`,
                     path: sub.file_path,
                     filename: sub.stored_filename || String(sub.file_path || '').split(/[\\/]/).pop(),
-                    submittedAt: sub.submitted_at || sub.createdAt || new Date(),
+                    submittedAt: sub.submitted_at || sub.createdAt || null,
                     isDraft: Boolean(sub.is_draft)
                 };
             } else if (topic[`milestone${step}_file`] && !topic[`milestone${step}_file`].name) {
+                const directFile = topic[`milestone${step}_file`];
                 topic[`milestone${step}_file`] = {
                     name: `Bài nộp mốc ${step}`,
-                    path: topic[`milestone${step}_file`].path || '',
-                    submittedAt: topic[`milestone${step}_file`].submittedAt || topic.updatedAt || new Date()
+                    path: directFile.path || '',
+                    submittedAt: directFile.submittedAt || directFile.uploadedAt || null
                 };
             }
         }
@@ -654,6 +705,11 @@ exports.updateTopic = async (req, res) => {
         res.json({ success: true, message: 'Cập nhật thông tin đề tài thành công!', topic });
     } catch (error) {
         console.error("Lỗi khi cập nhật đề tài:", error);
+        if (error.code === 11000 && error.keyPattern?.active_pool_topic_slot) {
+            return res.status(409).json({
+                message: 'Đề tài vừa được nhóm khác đăng ký hết chỉ tiêu. Vui lòng tải lại trang.'
+            });
+        }
         if (error.code === 11000 && error.keyPattern?.active_title_key) {
             return res.status(409).json({
                 message: 'Tên đề tài này vừa được nhóm khác đăng ký. Vui lòng chọn tên đề tài khác!'
@@ -988,21 +1044,52 @@ exports.deleteMilestoneSubmission = async (req, res) => {
 // 6. Lấy danh sách đề tài gợi ý trong Kho (Cho SV & GV xem)
 exports.getLecturerPoolTopics = async (req, res) => {
     try {
-        const pool = await LecturerTopic.find({ status: { $ne: 'REJECTED' } }).sort({ createdAt: -1 });
-        const activeTopics = await Topic.find({ status: { $in: activeTopicStatuses } })
-            .select('active_pool_topic_id title')
-            .lean();
-        const occupiedTopicIds = activeTopics
-            .map(topic => topic.active_pool_topic_id?.toString())
-            .filter(Boolean);
-        const occupiedIds = new Set(occupiedTopicIds.map(id => id.toString()));
-        const occupiedTitles = new Set(activeTopics.map(topic => normalizeTopicTitle(topic.title)));
-        const availablePool = pool.filter(topic =>
-            topic.status !== 'REGISTERED' &&
-            topic.is_registered !== true &&
-            !occupiedIds.has(topic._id.toString()) &&
-            !occupiedTitles.has(normalizeTopicTitle(topic.title))
-        );
+        const [pool, activeTopics, lecturers] = await Promise.all([
+            LecturerTopic.find({
+                status: { $ne: 'REJECTED' },
+                is_active: { $ne: false }
+            }).sort({ createdAt: -1 }).lean(),
+            Topic.find({ status: { $in: activeTopicStatuses } })
+                .select('active_pool_topic_id pool_topic_id lecturer_code leader_code')
+                .lean(),
+            User.find({ role: 'LECTURER' }).select('user_code max_quota').lean()
+        ]);
+        const quotaByLecturer = new Map(lecturers.map(lecturer => {
+            const quota = Number(lecturer.max_quota);
+            return [
+                String(lecturer.user_code || '').toUpperCase(),
+                Number.isInteger(quota) && quota >= 0 ? quota : 5
+            ];
+        }));
+        const registeredByPoolTopic = new Map();
+        const assignedByLecturer = new Map();
+        activeTopics.forEach(topic => {
+            const poolTopicId = String(topic.active_pool_topic_id || topic.pool_topic_id || '');
+            if (poolTopicId) {
+                registeredByPoolTopic.set(poolTopicId, (registeredByPoolTopic.get(poolTopicId) || 0) + 1);
+            }
+            const lecturerCode = String(topic.lecturer_code || '').toUpperCase();
+            if (lecturerCode && String(topic.leader_code || '').trim()) {
+                assignedByLecturer.set(lecturerCode, (assignedByLecturer.get(lecturerCode) || 0) + 1);
+            }
+        });
+        const availablePool = pool.map(topic => {
+            const registeredGroups = registeredByPoolTopic.get(String(topic._id)) || 0;
+            const lecturerQuota = quotaByLecturer.get(String(topic.lecturer_code || '').toUpperCase()) ?? 5;
+            const lecturerAssigned = assignedByLecturer.get(String(topic.lecturer_code || '').toUpperCase()) || 0;
+            const maxGroups = registeredGroups > 0 || lecturerAssigned < lecturerQuota ? 1 : 0;
+            const remainingGroups = Math.max(0, maxGroups - registeredGroups);
+            return {
+                ...topic,
+                max_groups: maxGroups,
+                registered_groups: registeredGroups,
+                remaining_groups: remainingGroups,
+                is_registered: remainingGroups === 0,
+                status: remainingGroups === 0
+                    ? 'REGISTERED'
+                    : topic.status === 'PENDING' ? 'PENDING' : 'OPEN'
+            };
+        });
         return res.status(200).json({ success: true, data: availablePool });
     } catch (error) {
         console.error("Lỗi lấy kho đề tài giảng viên:", error);
@@ -1086,6 +1173,13 @@ exports.assignLecturerToTopic = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm / đề tài!' });
         }
 
+        const isActiveAssignment = activeTopicStatuses.includes(topic.status) &&
+            Boolean(String(topic.leader_code || '').trim());
+        const isSameLecturer = String(topic.lecturer_code || '').trim().toUpperCase() ===
+            String(lecturer.user_code || '').trim().toUpperCase();
+        if (isActiveAssignment && !isSameLecturer &&
+            !await ensureLecturerHasCapacity(res, lecturer.user_code, topic._id)) return;
+
         topic.lecturer_code = lecturer_code;
         topic.status = topic.status === 'PENDING' ? 'PENDING' : topic.status;
         await topic.save();
@@ -1104,7 +1198,10 @@ exports.assignLecturerToTopic = async (req, res) => {
 // 7. Sinh viên đăng ký đề tài từ Kho đề tài (Bổ sung lưu pool_topic_id)
 exports.registerPoolTopic = async (req, res) => {
     try {
-        const { pool_topic_id, leader_code, member2_code, member3_code } = req.body;
+        const { pool_topic_id } = req.body;
+        const leader_code = String(req.body.leader_code || '').trim().toUpperCase();
+        const member2_code = String(req.body.member2_code || '').trim().toUpperCase() || null;
+        const member3_code = String(req.body.member3_code || '').trim().toUpperCase() || null;
         const requesterCode = String(req.user?.user_code || '').trim().toUpperCase();
         if (String(req.user?.role || '').toUpperCase() !== 'STUDENT' || !requesterCode) {
             return res.status(403).json({ message: 'Chỉ sinh viên mới được đăng ký đề tài!' });
@@ -1112,6 +1209,44 @@ exports.registerPoolTopic = async (req, res) => {
         if (String(leader_code || '').trim().toUpperCase() !== requesterCode) {
             return res.status(403).json({ message: 'Mã Trưởng nhóm phải trùng với tài khoản đang đăng nhập!' });
         }
+        const groupCodes = [leader_code, member2_code, member3_code].filter(Boolean);
+        if (new Set(groupCodes).size !== groupCodes.length) {
+            return res.status(400).json({ message: 'Mã sinh viên trong nhóm không được trùng nhau.' });
+        }
+
+        const students = await User.find({
+            user_code: { $in: groupCodes },
+            role: 'STUDENT'
+        }).select('user_code');
+        if (students.length !== groupCodes.length) {
+            return res.status(400).json({ message: 'Một hoặc nhiều mã sinh viên trong nhóm không hợp lệ.' });
+        }
+
+        const groupIdentityFilter = groupCodes.flatMap(code => [
+            { leader_code: codeRegex(code) },
+            { member2_code: codeRegex(code) },
+            { member3_code: codeRegex(code) }
+        ]);
+        const existingActiveTopic = await Topic.findOne({
+            status: { $in: activeTopicStatuses },
+            $or: groupIdentityFilter
+        }).select('_id leader_code title').lean();
+        if (existingActiveTopic) {
+            return res.status(409).json({
+                message: 'Bạn hoặc một thành viên trong nhóm đã có đề tài đang hoạt động. Mỗi sinh viên chỉ được tham gia một đề tài.'
+            });
+        }
+
+        const acceptedMembership = await GroupJoinRequest.findOne({
+            member_code: { $in: groupCodes.map(code => codeRegex(code)) },
+            status: 'ACCEPTED'
+        }).select('leader_code member_code').lean();
+        if (acceptedMembership) {
+            return res.status(409).json({
+                message: `Sinh viên ${acceptedMembership.member_code} đã được xác nhận vào nhóm của Trưởng nhóm ${acceptedMembership.leader_code}.`
+            });
+        }
+
         const activeSemester = await Semester.findOne({ is_active: true }).lean();
         const now = new Date();
         const registrationStart = activeSemester?.registration_start_date
@@ -1139,15 +1274,19 @@ exports.registerPoolTopic = async (req, res) => {
         if (!poolTopic) {
             return res.status(404).json({ message: "Không tìm thấy đề tài mẫu trong kho!" });
         }
-        if (poolTopic.status === 'REJECTED' || poolTopic.status === 'REGISTERED' || poolTopic.is_active === false) {
+        if (poolTopic.status === 'REJECTED' || poolTopic.is_active === false) {
             return res.status(404).json({ message: "Đề tài này hiện không khả dụng trong kho!" });
         }
+        const poolTopicSlot = await ensurePoolTopicCapacity(res, poolTopic, leader_code);
+        if (poolTopicSlot === null) return;
+
         const duplicateTitle = await findActiveTitleConflict(poolTopic.title);
         if (duplicateTitle) {
             return res.status(409).json({
                 message: 'Đề tài này đã được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
             });
         }
+        if (!await ensureLecturerHasCapacity(res, poolTopic.lecturer_code)) return;
 
         const newTopic = new Topic({
             leader_code,
@@ -1158,9 +1297,11 @@ exports.registerPoolTopic = async (req, res) => {
             description: poolTopic.description,
             requirements: poolTopic.requirements || '',
             category: poolTopic.category || 'Web / Ứng dụng',
+            max_groups: 1,
             source: 'LECTURER',
             pool_topic_id: poolTopic._id,
             active_pool_topic_id: poolTopic._id,
+            active_pool_topic_slot: poolTopicSlot,
             active_title_key: normalizeTopicTitle(poolTopic.title) || undefined,
             status: 'PENDING'
         });
@@ -1174,9 +1315,10 @@ exports.registerPoolTopic = async (req, res) => {
     } catch (error) {
         console.error("Lỗi đăng ký đề tài từ Kho:", error);
         if (error.code === 11000 &&
-            (error.keyPattern?.active_pool_topic_id || error.keyPattern?.active_title_key)) {
+            (error.keyPattern?.active_pool_topic_id || error.keyPattern?.active_pool_topic_slot ||
+                error.keyPattern?.active_title_key)) {
             return res.status(409).json({
-                message: 'Đề tài này vừa được nhóm khác đăng ký. Vui lòng chọn đề tài khác!'
+                message: 'Đề tài vừa được nhóm khác đăng ký hết chỉ tiêu. Vui lòng thử lại hoặc chọn đề tài khác!'
             });
         }
         return res.status(500).json({ message: "Lỗi máy chủ khi chọn đề tài từ Kho!" });
@@ -1195,14 +1337,20 @@ exports.getLecturerTopics = async (req, res) => {
             lecturer_code.toUpperCase() !== String(req.params.lecturer_code || '').trim().toUpperCase()) {
             return res.status(403).json({ success: false, message: 'Bạn chỉ có thể xem đề tài của mình.' });
         }
+
+        const lecturerQuotaStatus = await getLecturerQuotaStatus(lecturer_code);
+        if (!lecturerQuotaStatus.found) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin chỉ tiêu của giảng viên.' });
+        }
         
         // Lấy đề tài Sinh viên đăng ký
         const topics = await Topic.find({ lecturer_code }).sort({ createdAt: -1 }).lean();
 
         // Lấy đề tài Giảng viên đã tạo trong Kho (lecturer_topics)
         const lecturerPool = await LecturerTopic.find({ lecturer_code }).sort({ createdAt: -1 }).lean();
-        const milestoneSteps = (await Milestone.find({ lecturerCode: lecturer_code, topicId: null }).select('step').lean())
-            .map(item => item.step);
+        const milestones = await Milestone.find({ lecturerCode: lecturer_code, topicId: null })
+            .sort({ step: 1 })
+            .lean();
 
         const topicIds = topics.map(t => t._id);
         const submissions = await Submission.find({
@@ -1210,64 +1358,40 @@ exports.getLecturerTopics = async (req, res) => {
             is_draft: { $ne: true }
         }).lean();
 
-        const enrichedTopics = topics.map(topic => {
-            const topicSubmissions = submissions.filter(
-                s => s.topic_id && s.topic_id.toString() === topic._id.toString()
-            );
-
-            let completedMilestones = 0;
-
-            for (const i of milestoneSteps) {
-                const sub = topicSubmissions.find(s => 
-                    s.milestone == i || 
-                    s.milestone_step == i || 
-                    s.milestone === `Mốc ${i}`
-                );
-
-                const directFile = topic[`milestone${i}_file`];
-
-                if (sub || (directFile && (directFile.name || directFile.path))) {
-                    completedMilestones++;
-                }
-            }
-
-            const progressPercentage = milestoneSteps.length
-                ? Math.round(completedMilestones / milestoneSteps.length * 100)
-                : 0;
-            const isOnSchedule = completedMilestones > 0;
-
-            return {
-                ...topic,
-                progress_percentage: progressPercentage,
-                milestone_progress: progressPercentage,
-                completed_milestones: completedMilestones,
-                progress_status: isOnSchedule ? 'Đúng tiến độ' : 'Chậm tiến độ',
-                status_text: isOnSchedule ? 'Đang đúng tiến độ' : 'Chậm tiến độ',
-                is_late: !isOnSchedule
-            };
-        });
+        const progressByTopic = getTopicMilestoneProgress(topics, milestones, submissions);
+        const enrichedTopics = topics.map(topic => ({
+            ...topic,
+            ...progressByTopic.get(String(topic._id))
+        }));
 
         const pendingTopics = enrichedTopics.filter(t => t.status === 'PENDING' || t.status === 'NEED_REVISION');
         const approvedTopics = enrichedTopics.filter(t => t.status === 'APPROVED');
 
-        // Đánh dấu đề tài trong kho đã được nhóm đăng ký.
-        const approvedTitles = approvedTopics.map(t => (t.title || "").trim().toLowerCase());
-        const approvedPoolIds = approvedTopics.map(t => t.pool_topic_id ? t.pool_topic_id.toString() : null).filter(Boolean);
+        const registeredByPoolTopic = new Map();
+        topics.filter(topic => activeTopicStatuses.includes(topic.status)).forEach(topic => {
+            const poolTopicId = String(topic.active_pool_topic_id || topic.pool_topic_id || '');
+            if (poolTopicId) {
+                registeredByPoolTopic.set(poolTopicId, (registeredByPoolTopic.get(poolTopicId) || 0) + 1);
+            }
+        });
 
         const enrichedLecturerPool = lecturerPool.map(poolItem => {
-            const itemTitle = (poolItem.title || "").trim().toLowerCase();
             const itemId = poolItem._id.toString();
-
-            const isRegistered = approvedTitles.includes(itemTitle) ||
-                               approvedPoolIds.includes(itemId) || 
-                               poolItem.status === 'REGISTERED' || 
-                               poolItem.is_registered === true;
+            const registeredGroups = registeredByPoolTopic.get(itemId) || 0;
+            const maxGroups = registeredGroups > 0 || lecturerQuotaStatus.available ? 1 : 0;
+            const remainingGroups = Math.max(0, maxGroups - registeredGroups);
+            const isRegistered = remainingGroups === 0;
 
             return {
                 ...poolItem,
-                status: isRegistered ? 'REGISTERED' : (poolItem.status === 'REJECTED' ? 'REJECTED' : 'OPEN'),
-                is_active: poolItem.status !== 'REJECTED',
-                is_registered: isRegistered
+                status: poolItem.status === 'REJECTED'
+                    ? 'REJECTED'
+                    : isRegistered ? 'REGISTERED' : 'OPEN',
+                is_active: poolItem.status !== 'REJECTED' && poolItem.is_active !== false,
+                is_registered: isRegistered,
+                max_groups: 1,
+                registered_groups: registeredGroups,
+                remaining_groups: remainingGroups
             };
         });
 
@@ -1277,6 +1401,7 @@ exports.getLecturerTopics = async (req, res) => {
                 pending: pendingTopics,
                 approved: approvedTopics,
                 myPool: enrichedLecturerPool, // Trả về kho đề tài đã gán trạng thái đối soát
+                lecturerMaxQuota: lecturerQuotaStatus.quota,
                 all: enrichedTopics
             }
         });
@@ -1337,10 +1462,20 @@ exports.createLecturerTopic = async (req, res) => {
 // 3. Giảng viên thêm đề tài gợi ý vào Collection 'lecturer_topics'
 exports.createLecturerPoolTopic = async (req, res) => {
     try {
-        const { title, description, requirements, category, max_groups } = req.body;
+        const { title, description, requirements, category } = req.body;
         const lecturer_code = String(req.user?.user_code || '').trim();
         if (String(req.user?.role || '').toUpperCase() !== 'LECTURER' || !lecturer_code) {
             return res.status(403).json({ success: false, message: 'Chỉ giảng viên mới có thể tạo đề tài.' });
+        }
+        const lecturerQuotaStatus = await getLecturerQuotaStatus(lecturer_code);
+        if (!lecturerQuotaStatus.found) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin chỉ tiêu của giảng viên.' });
+        }
+        if (lecturerQuotaStatus.quota < 1) {
+            return res.status(400).json({
+                success: false,
+                message: 'Chỉ tiêu tổng của bạn đang bằng 0. Vui lòng liên hệ Admin để tăng chỉ tiêu trước.'
+            });
         }
 
         const newTopic = new LecturerTopic({
@@ -1349,7 +1484,7 @@ exports.createLecturerPoolTopic = async (req, res) => {
             description,
             requirements: requirements || '',
             category: category || 'Web / Ứng dụng',
-            max_groups: Number(max_groups) || 1,
+            max_groups: 1,
             status: 'APPROVED',
             is_active: true,
             feedback: ''
@@ -1370,15 +1505,11 @@ exports.createLecturerPoolTopic = async (req, res) => {
 
 exports.updateLecturerPoolTopic = async (req, res) => {
     try {
-        const { title, description, requirements, category, max_groups } = req.body;
+        const { title, description, requirements, category } = req.body;
         const normalizedTitle = String(title || '').trim();
-        const normalizedMaxGroups = Number(max_groups);
 
         if (!normalizedTitle) {
             return res.status(400).json({ success: false, message: 'Tên đề tài không được để trống.' });
-        }
-        if (!Number.isInteger(normalizedMaxGroups) || normalizedMaxGroups < 1 || normalizedMaxGroups > 3) {
-            return res.status(400).json({ success: false, message: 'Số nhóm tối đa phải từ 1 đến 3.' });
         }
 
         const poolTopic = await LecturerTopic.findOne({
@@ -1388,12 +1519,22 @@ exports.updateLecturerPoolTopic = async (req, res) => {
         if (!poolTopic) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy đề tài trong kho của bạn.' });
         }
+        const lecturerQuotaStatus = await getLecturerQuotaStatus(poolTopic.lecturer_code);
+        if (!lecturerQuotaStatus.found) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin chỉ tiêu của giảng viên.' });
+        }
+        if (lecturerQuotaStatus.quota < 1) {
+            return res.status(400).json({
+                success: false,
+                message: 'Chỉ tiêu tổng của bạn đang bằng 0. Vui lòng liên hệ Admin để tăng chỉ tiêu trước.'
+            });
+        }
 
         poolTopic.title = normalizedTitle;
         poolTopic.description = String(description || '').trim();
         poolTopic.requirements = String(requirements || '').trim();
         poolTopic.category = category || 'Web / Ứng dụng';
-        poolTopic.max_groups = normalizedMaxGroups;
+        poolTopic.max_groups = 1;
         await poolTopic.save();
 
         return res.json({
@@ -1428,8 +1569,17 @@ exports.updateTopicStatus = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy đề tài!' });
         }
         const previousStatus = topic.status;
+        if (activeTopicStatuses.includes(status) && !activeTopicStatuses.includes(previousStatus) &&
+            String(topic.leader_code || '').trim() &&
+            !await ensureLecturerHasCapacity(res, lecturerCode, topic._id)) return;
+
         topic.status = status;
         topic.feedback = String(feedback || '');
+        if (status === 'REJECTED') {
+            topic.active_pool_topic_id = undefined;
+            topic.active_pool_topic_slot = undefined;
+            topic.active_title_key = undefined;
+        }
         await topic.save();
 
         // BỔ SUNG: Khi duyệt đề tài, tự động cập nhật bản ghi tương ứng trong Kho (LecturerTopic)
@@ -1447,9 +1597,6 @@ exports.updateTopicStatus = async (req, res) => {
             }
         }
         if (status === 'REJECTED') {
-            topic.active_pool_topic_id = undefined;
-            topic.active_title_key = undefined;
-            await topic.save();
             if (topic.pool_topic_id) {
                 await LecturerTopic.findByIdAndUpdate(topic.pool_topic_id, {
                     status: 'APPROVED',
@@ -1553,7 +1700,7 @@ exports.getLecturerProgressMatrix = async (req, res) => {
                         submitted: true,
                         file_name: directFile.name || 'Bài nộp',
                         file_path: directFile.path,
-                        submitted_at: directFile.uploadedAt || directFile.submittedAt || topic.updatedAt
+                        submitted_at: directFile.uploadedAt || directFile.submittedAt || null
                     };
                 } else {
                     milestones[`milestone${i}`] = null;

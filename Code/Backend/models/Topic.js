@@ -31,6 +31,10 @@ const topicSchema = new mongoose.Schema({
         ref: 'LecturerTopic',
         default: undefined
     },
+    active_pool_topic_slot: {
+        type: Number,
+        default: undefined
+    },
     active_title_key: {
         type: String,
         default: undefined
@@ -64,8 +68,7 @@ const topicSchema = new mongoose.Schema({
     max_groups: { 
         type: Number, 
         default: 1,
-        min: 1,
-        max: 3 
+        min: 1
     },       // Số nhóm tối đa được đăng ký (Cho kho đề tài GV)
 
     // 5. PHÂN LOẠI & TRẠNG THÁI
@@ -96,11 +99,15 @@ const topicSchema = new mongoose.Schema({
 
 topicSchema.index(
     { active_pool_topic_id: 1 },
-    { unique: true, sparse: true, name: 'unique_active_pool_topic' }
+    { sparse: true, name: 'active_pool_topic_lookup' }
+);
+topicSchema.index(
+    { active_pool_topic_id: 1, active_pool_topic_slot: 1 },
+    { unique: true, sparse: true, name: 'unique_active_pool_topic_slot' }
 );
 topicSchema.index(
     { active_title_key: 1 },
-    { unique: true, sparse: true, name: 'unique_active_topic_title' }
+    { sparse: true, name: 'active_topic_title_lookup' }
 );
 
 // Tự động phát sinh topic_code ngẫu nhiên nếu chưa truyền vào khi tạo mới

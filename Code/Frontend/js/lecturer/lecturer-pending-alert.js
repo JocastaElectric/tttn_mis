@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const user = auth?.user;
-    if (!auth?.token || user?.role !== "LECTURER" || !user.user_code) return;
+    if (!user || user.role !== "LECTURER" || !user.user_code) return;
 
     const lecturerCode = encodeURIComponent(user.user_code);
     const topicLinks = document.querySelectorAll(
@@ -26,7 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
         isChecking = true;
 
         try {
-            const response = await fetch(
+            const response = await apiFetch(
                 `${window.APP_CONFIG.API_BASE_URL}/api/topics/lecturer/${lecturerCode}/pending-review`,
                 { headers: { Authorization: `Bearer ${auth.token}` } }
             );

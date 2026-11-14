@@ -4,6 +4,21 @@ const Group = require('../models/Group');
 const GroupJoinRequest = require('../models/GroupJoinRequest');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const getJwtSecret = require('../utils/jwtSecret');
+const passwordResetEmail = require('../services/passwordResetEmail');
+const {
+    AUTH_COOKIE_NAME,
+    getAuthCookieName,
+    getTabAuthCookieName,
+    getTabSessionIdFromRequest,
+    hasInvalidTabSessionId,
+    getRoleFromRequest,
+    authCookieOptions,
+    authCookieClearOptions,
+    clearAuthCookies
+} = require('../utils/authCookie');
+const { ACTIVE_TOPIC_STATUSES, getLecturerGroupCount } = require('../services/lecturerQuota');
 
 const escapeRegex = value => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const codeRegex = value => new RegExp(`^${escapeRegex(value)}$`, 'i');
@@ -14,9 +29,30 @@ const topicMemberFilter = userCode => ({
         { member3_code: codeRegex(userCode) }
     ]
 });
+const INITIAL_PASSWORD = '123456';
+const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+const RESET_REQUEST_COOLDOWN_MS = 60 * 1000;
+const RESET_REQUEST_RESPONSE = {
+    success: true,
+    message: 'Nếu thông tin khớp với tài khoản, liên kết đặt lại mật khẩu sẽ được gửi đến email đã đăng ký.'
+};
+
+const getPasswordValidationMessage = password => {
+    if (typeof password !== 'string' || password.length < 8) {
+        return 'Mật khẩu mới phải có ít nhất 8 ký tự!';
+    }
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+        return 'Mật khẩu mới phải có chữ hoa, chữ thường, chữ số và ký tự đặc biệt!';
+    }
+    return null;
+};
 
 exports.login = async (req, res) => {
     try {
+        if (hasInvalidTabSessionId(req)) {
+            return res.status(400).json({ success: false, message: 'Mã phiên của tab không hợp lệ.' });
+        }
+
         const { user_code, password } = req.body;
 
         // 1. Kiểm tra tài khoản có tồn tại
@@ -31,28 +67,72 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: 'Mã định danh hoặc mật khẩu không đúng!' });
         }
 
-        // 3. Tạo JWT Token (fallback nếu .env chưa được tạo)
-        const secretKey = process.env.JWT_SECRET || 'secret_key_tttn_2026';
+        const mustChangePassword = Boolean(user.must_change_password) || password === INITIAL_PASSWORD;
+        if (mustChangePassword && !user.must_change_password) {
+            user.must_change_password = true;
+            await user.save();
+        }
+
         const token = jwt.sign(
-            { id: user._id, role: user.role, user_code: user.user_code },
-            secretKey,
+            {
+                id: user._id,
+                role: user.role,
+                user_code: user.user_code,
+                must_change_password: mustChangePassword
+            },
+            getJwtSecret(),
             { expiresIn: '1d' }
         );
 
-        // 4. Trả về kết quả
+        const tabSessionId = getTabSessionIdFromRequest(req);
+        const cookieName = tabSessionId
+            ? getTabAuthCookieName(tabSessionId)
+            : getAuthCookieName(user.role);
+        res.cookie(cookieName, token, authCookieOptions);
+        res.clearCookie(AUTH_COOKIE_NAME, authCookieClearOptions);
         res.json({
-            token,
+            success: true,
             user: {
                 id: user._id,
                 user_code: user.user_code,
                 full_name: user.full_name,
-                role: user.role
+                role: user.role,
+                must_change_password: mustChangePassword
             }
         });
 
     } catch (error) {
         res.status(500).json({ message: 'Lỗi máy chủ!', error: error.message });
     }
+};
+
+exports.getSession = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('_id user_code full_name role must_change_password');
+        if (!user) {
+            clearAuthCookies(res, req.authRole, req.authSessionId);
+            return res.status(401).json({ success: false, message: 'Phiên đăng nhập không hợp lệ.' });
+        }
+
+        return res.json({
+            success: true,
+            user: {
+                id: user._id,
+                user_code: user.user_code,
+                full_name: user.full_name,
+                role: user.role,
+                must_change_password: Boolean(user.must_change_password || req.user.must_change_password)
+            }
+        });
+    } catch (error) {
+        console.error('Lỗi lấy phiên đăng nhập:', error);
+        return res.status(500).json({ success: false, message: 'Không thể xác minh phiên đăng nhập.' });
+    }
+};
+
+exports.logout = (req, res) => {
+    clearAuthCookies(res, getRoleFromRequest(req), getTabSessionIdFromRequest(req));
+    return res.json({ success: true });
 };
 
 // Đổi mật khẩu (yêu cầu người dùng đã đăng nhập, xác minh mật khẩu hiện tại)
@@ -68,15 +148,9 @@ exports.changePassword = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ thông tin!' });
         }
 
-        if (newPassword.length < 8) {
-            return res.status(400).json({ success: false, message: 'Mật khẩu mới phải có ít nhất 8 ký tự!' });
-        }
-
-        if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Mật khẩu mới phải có chữ hoa, chữ thường, chữ số và ký tự đặc biệt!'
-            });
+        const passwordValidationMessage = getPasswordValidationMessage(newPassword);
+        if (passwordValidationMessage) {
+            return res.status(400).json({ success: false, message: passwordValidationMessage });
         }
 
         const user = await User.findOne({ user_code });
@@ -89,50 +163,120 @@ exports.changePassword = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Mật khẩu hiện tại không đúng!' });
         }
 
+        if (newPassword === currentPassword) {
+            return res.status(400).json({ success: false, message: 'Mật khẩu mới không được trùng với mật khẩu hiện tại!' });
+        }
+
         const isSamePassword = await bcrypt.compare(newPassword, user.password);
         if (isSamePassword) {
             return res.status(400).json({ success: false, message: 'Mật khẩu mới không được trùng với mật khẩu hiện tại!' });
         }
 
         user.password = await bcrypt.hash(newPassword, 10);
+        user.must_change_password = false;
         await user.save();
 
-        return res.status(200).json({ success: true, message: 'Đổi mật khẩu thành công!' });
+        return res.status(200).json({
+            success: true,
+            message: 'Đổi mật khẩu thành công!',
+            mustReauthenticate: Boolean(req.user.must_change_password)
+        });
     } catch (error) {
         console.error('Lỗi đổi mật khẩu:', error);
         return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi đổi mật khẩu!', error: error.message });
     }
 };
 
-// Quên mật khẩu — xác thực bằng Mã định danh + Email đã đăng ký, reset về mật khẩu tạm thời
 exports.forgotPassword = async (req, res) => {
     try {
-        const { user_code, email } = req.body;
+        const userCode = String(req.body?.user_code || '').trim();
+        const email = String(req.body?.email || '').trim();
 
-        if (!user_code || !email) {
+        if (!userCode || !email) {
             return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ Mã định danh và Email!' });
         }
 
-        const user = await User.findOne({ user_code });
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản với mã định danh này!' });
+        try {
+            passwordResetEmail.getSettings();
+        } catch (error) {
+            console.error('Cấu hình gửi email đặt lại mật khẩu chưa sẵn sàng:', error.message);
+            return res.status(503).json({
+                success: false,
+                message: 'Chức năng đặt lại mật khẩu chưa được cấu hình email. Vui lòng liên hệ quản trị viên.'
+            });
         }
 
-        if (!user.email || user.email.trim().toLowerCase() !== email.trim().toLowerCase()) {
-            return res.status(400).json({ success: false, message: 'Email không khớp với email đã đăng ký của tài khoản này!' });
+        const user = await User.findOne({ user_code: userCode });
+        if (!user || !user.email || user.email.trim().toLowerCase() !== email.toLowerCase()) {
+            return res.status(202).json(RESET_REQUEST_RESPONSE);
         }
 
-        const tempPassword = '123456';
-        user.password = await bcrypt.hash(tempPassword, 10);
+        const now = Date.now();
+        if (user.passwordResetRequestedAt &&
+            now - new Date(user.passwordResetRequestedAt).getTime() < RESET_REQUEST_COOLDOWN_MS) {
+            return res.status(202).json(RESET_REQUEST_RESPONSE);
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        user.passwordResetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        user.passwordResetExpiresAt = new Date(now + RESET_TOKEN_TTL_MS);
+        user.passwordResetRequestedAt = new Date(now);
         await user.save();
 
-        return res.status(200).json({
-            success: true,
-            message: `Đã đặt lại mật khẩu thành công! Vui lòng đăng nhập bằng mật khẩu tạm thời "${tempPassword}" rồi đổi lại mật khẩu ngay trong mục Đổi mật khẩu.`
-        });
+        try {
+            await passwordResetEmail.sendPasswordResetEmail({ to: user.email, token });
+        } catch (error) {
+            user.passwordResetTokenHash = undefined;
+            user.passwordResetExpiresAt = undefined;
+            user.passwordResetRequestedAt = undefined;
+            await user.save();
+            console.error('Không gửi được email đặt lại mật khẩu:', error);
+            return res.status(503).json({
+                success: false,
+                message: 'Chưa gửi được email đặt lại mật khẩu. Vui lòng thử lại sau.'
+            });
+        }
+
+        return res.status(202).json(RESET_REQUEST_RESPONSE);
     } catch (error) {
         console.error('Lỗi quên mật khẩu:', error);
-        return res.status(500).json({ success: false, message: 'Lỗi máy chủ!', error: error.message });
+        return res.status(500).json({ success: false, message: 'Không thể xử lý yêu cầu đặt lại mật khẩu.' });
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    try {
+        const token = String(req.body?.token || '').trim().toLowerCase();
+        const newPassword = req.body?.new_password;
+        if (!/^[a-f0-9]{64}$/.test(token)) {
+            return res.status(400).json({ success: false, message: 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.' });
+        }
+
+        const passwordValidationMessage = getPasswordValidationMessage(newPassword);
+        if (passwordValidationMessage) {
+            return res.status(400).json({ success: false, message: passwordValidationMessage });
+        }
+
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const user = await User.findOne({
+            passwordResetTokenHash: tokenHash,
+            passwordResetExpiresAt: { $gt: new Date() }
+        });
+        if (!user) {
+            return res.status(400).json({ success: false, message: 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.' });
+        }
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        user.must_change_password = false;
+        user.passwordResetTokenHash = undefined;
+        user.passwordResetExpiresAt = undefined;
+        user.passwordResetRequestedAt = undefined;
+        await user.save();
+
+        return res.json({ success: true, message: 'Đã đặt lại mật khẩu. Vui lòng đăng nhập bằng mật khẩu mới.' });
+    } catch (error) {
+        console.error('Lỗi đặt lại mật khẩu:', error);
+        return res.status(500).json({ success: false, message: 'Không thể đặt lại mật khẩu lúc này.' });
     }
 };
 
@@ -154,6 +298,7 @@ exports.createStudent = async (req, res) => {
         const student = new User({
             user_code,
             password: hashedPassword,
+            must_change_password: true,
             full_name,
             role: 'STUDENT',
             email,
@@ -165,7 +310,7 @@ exports.createStudent = async (req, res) => {
         await student.save();
         return res.status(201).json({
             success: true,
-            message: 'Thêm sinh viên thành công!',
+            message: `Thêm sinh viên thành công. Mật khẩu ban đầu là ${INITIAL_PASSWORD} và sinh viên phải đổi mật khẩu ở lần đăng nhập đầu tiên.`,
             data: {
                 user_code: student.user_code,
                 full_name: student.full_name,
@@ -225,9 +370,15 @@ exports.deleteStudent = async (req, res) => {
 exports.createLecturer = async (req, res) => {
     try {
         const { user_code, full_name, degree, dept, email } = req.body;
+        const quotaInput = req.body.max_quota;
+        const maxQuota = quotaInput === undefined ? 5 : Number(quotaInput);
 
         if (!user_code || !full_name || !degree || !dept || !email) {
             return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ Mã GV, Họ tên, Học vị, Bộ môn và Email.' });
+        }
+        if (quotaInput === null || (typeof quotaInput === 'string' && !quotaInput.trim()) ||
+            !Number.isInteger(maxQuota) || maxQuota < 0) {
+            return res.status(400).json({ success: false, message: 'Số nhóm tối đa phải là số nguyên không âm.' });
         }
 
         const existingUser = await User.findOne({ user_code });
@@ -239,24 +390,27 @@ exports.createLecturer = async (req, res) => {
         const lecturer = new User({
             user_code,
             password: hashedPassword,
+            must_change_password: true,
             full_name,
             role: 'LECTURER',
             email,
             degree,
-            dept
+            dept,
+            max_quota: maxQuota
         });
 
         await lecturer.save();
         return res.status(201).json({
             success: true,
-            message: 'Thêm giảng viên thành công!',
+            message: `Thêm giảng viên thành công. Mật khẩu ban đầu là ${INITIAL_PASSWORD} và giảng viên phải đổi mật khẩu ở lần đăng nhập đầu tiên.`,
             data: {
                 user_code: lecturer.user_code,
                 full_name: lecturer.full_name,
                 role: lecturer.role,
                 email: lecturer.email,
                 degree: lecturer.degree,
-                dept: lecturer.dept
+                dept: lecturer.dept,
+                max_quota: lecturer.max_quota
             }
         });
     } catch (error) {
@@ -270,10 +424,28 @@ exports.updateLecturer = async (req, res) => {
     try {
         const { user_code } = req.params;
         const { full_name, degree, dept, email } = req.body;
+        const quotaInput = req.body.max_quota;
+        const maxQuota = quotaInput === undefined ? null : Number(quotaInput);
+        if (quotaInput === null || (typeof quotaInput === 'string' && !quotaInput.trim()) ||
+            (maxQuota !== null && (!Number.isInteger(maxQuota) || maxQuota < 0))) {
+            return res.status(400).json({ success: false, message: 'Số nhóm tối đa phải là số nguyên không âm.' });
+        }
 
         const lecturer = await User.findOne({ user_code, role: 'LECTURER' });
         if (!lecturer) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy giảng viên.' });
+        }
+        if (maxQuota !== null) {
+            const assignedGroups = await getLecturerGroupCount(lecturer.user_code);
+            if (maxQuota < assignedGroups) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Không thể giảm chỉ tiêu thấp hơn số nhóm đang được hướng dẫn (${assignedGroups}).`,
+                    assigned: assignedGroups,
+                    quota: maxQuota
+                });
+            }
+            lecturer.max_quota = maxQuota;
         }
 
         lecturer.full_name = full_name || lecturer.full_name;
@@ -286,6 +458,87 @@ exports.updateLecturer = async (req, res) => {
     } catch (error) {
         console.error('Lỗi cập nhật giảng viên:', error);
         return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi cập nhật giảng viên!', error: error.message });
+    }
+};
+
+exports.updateLecturerQuotas = async (req, res) => {
+    try {
+        const requestedCodes = Array.isArray(req.body.user_codes)
+            ? [...new Set(req.body.user_codes.map(code => String(code || '').trim()).filter(Boolean))]
+            : [];
+        const quotaInput = req.body.max_quota;
+        const maxQuota = quotaInput === null || (typeof quotaInput === 'string' && !quotaInput.trim())
+            ? NaN
+            : Number(quotaInput);
+
+        if (requestedCodes.length === 0) {
+            return res.status(400).json({ success: false, message: 'Hãy chọn ít nhất một giảng viên.' });
+        }
+        if (!Number.isInteger(maxQuota) || maxQuota < 0) {
+            return res.status(400).json({ success: false, message: 'Số nhóm tối đa phải là số nguyên không âm.' });
+        }
+
+        const lecturers = await User.find({
+            user_code: { $in: requestedCodes },
+            role: 'LECTURER'
+        }).select('user_code full_name');
+        if (lecturers.length !== requestedCodes.length) {
+            return res.status(404).json({
+                success: false,
+                message: 'Một hoặc nhiều giảng viên đã chọn không còn tồn tại. Vui lòng tải lại danh sách.'
+            });
+        }
+
+        const lecturerCodes = lecturers.map(lecturer => lecturer.user_code);
+        const groupCounts = await Topic.aggregate([
+            {
+                $match: {
+                    $or: lecturerCodes.map(userCode => ({ lecturer_code: codeRegex(userCode) })),
+                    leader_code: { $exists: true, $nin: [null, ''] },
+                    status: { $in: ACTIVE_TOPIC_STATUSES }
+                }
+            },
+            { $group: { _id: '$lecturer_code', groupsCount: { $sum: 1 } } }
+        ]);
+        const groupCountByLecturer = new Map(groupCounts.map(item => [
+            String(item._id || '').toUpperCase(),
+            item.groupsCount
+        ]));
+        const overLimitLecturers = lecturers
+            .map(lecturer => ({
+                user_code: lecturer.user_code,
+                full_name: lecturer.full_name,
+                groupsCount: groupCountByLecturer.get(String(lecturer.user_code).toUpperCase()) || 0
+            }))
+            .filter(lecturer => lecturer.groupsCount > maxQuota);
+
+        if (overLimitLecturers.length > 0) {
+            const details = overLimitLecturers
+                .map(lecturer => `${lecturer.user_code}: ${lecturer.groupsCount} nhóm`)
+                .join(', ');
+            return res.status(409).json({
+                success: false,
+                message: `Không thể đặt chỉ tiêu ${maxQuota} vì thấp hơn số nhóm đang hướng dẫn của: ${details}.`,
+                data: { lecturers: overLimitLecturers }
+            });
+        }
+
+        await User.updateMany(
+            { _id: { $in: lecturers.map(lecturer => lecturer._id) }, role: 'LECTURER' },
+            { $set: { max_quota: maxQuota } }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: `Đã cập nhật chỉ tiêu cho ${lecturers.length} giảng viên.`,
+            data: {
+                max_quota: maxQuota,
+                user_codes: lecturerCodes
+            }
+        });
+    } catch (error) {
+        console.error('Lỗi cập nhật chỉ tiêu hàng loạt:', error);
+        return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi cập nhật chỉ tiêu hàng loạt.' });
     }
 };
 
@@ -335,7 +588,7 @@ exports.getAdmins = async (req, res) => {
 exports.getLecturers = async (req, res) => {
     try {
         const lecturers = await User.find({ role: 'LECTURER' })
-            .select('user_code full_name degree dept email createdAt')
+            .select('user_code full_name degree dept email max_quota createdAt')
             .sort({ createdAt: -1 });
 
         const lecturerCodes = lecturers.map(item => item.user_code);
@@ -344,8 +597,8 @@ exports.getLecturers = async (req, res) => {
             {
                 $match: {
                     lecturer_code: { $in: lecturerCodes },
-                    leader_code: { $exists: true, $ne: null },
-                    status: { $ne: 'REJECTED' }
+                    leader_code: { $exists: true, $nin: [null, ''] },
+                    status: { $in: ACTIVE_TOPIC_STATUSES }
                 }
             },
             { $group: { _id: '$lecturer_code', groupsCount: { $sum: 1 } } }
@@ -365,6 +618,7 @@ exports.getLecturers = async (req, res) => {
             acc[cur._id] = cur.topicsCount;
             return acc;
         }, {});
+        const requesterRole = String(req.user?.role || '').toUpperCase();
 
         const formatted = lecturers.map(item => ({
             user_code: item.user_code,
@@ -375,7 +629,10 @@ exports.getLecturers = async (req, res) => {
                 ? { email: item.email || 'Chưa cập nhật' }
                 : {}),
             groupsCount: groupMap[item.user_code] || 0,
-            topicsCount: topicMap[item.user_code] || 0
+            topicsCount: topicMap[item.user_code] || 0,
+            ...(requesterRole === 'ADMIN' || requesterRole === 'STUDENT'
+                ? { max_quota: item.max_quota ?? 5 }
+                : {})
         }));
 
         res.json({

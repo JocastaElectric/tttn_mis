@@ -123,7 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const loadDocuments = async () => {
         try {
-            const response = await fetch(`${API_BASE}/api/documents/student`, { headers: authHeaders });
+            const response = await apiFetch(`${API_BASE}/api/documents/student`, { headers: authHeaders });
             const result = await response.json();
             const docs = result && Array.isArray(result.documents)
                 ? result.documents.filter(doc => doc.target !== "Tất cả giảng viên")

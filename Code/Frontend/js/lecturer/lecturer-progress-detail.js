@@ -34,7 +34,7 @@ function getFileUrl(filePath, fileName) {
 
 async function getStudentName(code, token) {
     try {
-        const response = await fetch(`${API_BASE}/api/auth/users/${encodeURIComponent(code)}`, {
+        const response = await apiFetch(`${API_BASE}/api/auth/users/${encodeURIComponent(code)}`, {
             headers: { Authorization: `Bearer ${token}` }
         });
         const result = await response.json();
@@ -95,7 +95,7 @@ function renderSubmissions(submissions) {
         event.preventDefault();
         const auth = getLecturerAuth();
         try {
-            const response = await fetch(link.href, {
+            const response = await apiFetch(link.href, {
                 headers: { Authorization: `Bearer ${auth?.token || ''}` }
             });
             if (!response.ok) throw new Error('Không thể tải tệp báo cáo.');
@@ -159,7 +159,7 @@ function renderSubmissions(submissions) {
             const auth = getLecturerAuth();
             button.disabled = true;
             try {
-                const response = await fetch(
+                const response = await apiFetch(
                     `${API_BASE}/api/submissions/topic/${encodeURIComponent(currentTopicId)}/${encodeURIComponent(button.dataset.submissionId)}/review`,
                     {
                         method: 'PATCH',
@@ -185,9 +185,9 @@ function renderSubmissions(submissions) {
 function getLecturerAuth() {
     try {
         const active = JSON.parse(sessionStorage.getItem('activeAuth') || 'null');
-        if (active?.user?.role === 'LECTURER' && active.token) return active;
+        if (active?.user?.role === 'LECTURER') return active;
         const stored = JSON.parse(localStorage.getItem('lecturerAuth') || 'null');
-        return stored?.user?.role === 'LECTURER' && stored.token ? stored : null;
+        return stored?.user?.role === 'LECTURER' ? stored : null;
     } catch (error) {
         console.error('Không thể đọc thông tin phiên giảng viên:', error);
         return null;
@@ -201,7 +201,7 @@ async function loadProgressDetail() {
     currentTopicId = topicId;
     const body = document.getElementById('submissionTableBody');
 
-    if (!user || user.role !== 'LECTURER' || !auth.token || !topicId) {
+    if (!user || user.role !== 'LECTURER' || !topicId) {
         document.getElementById('topicTitle').textContent = 'Không thể tải thông tin đề tài';
         document.getElementById('topicMeta').textContent = 'Vui lòng đăng nhập lại hoặc mở lại đề tài từ danh sách của giảng viên.';
         body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444; padding:24px 0;">Không xác định được đề tài hoặc phiên giảng viên.</td></tr>';
@@ -210,11 +210,11 @@ async function loadProgressDetail() {
 
     try {
         const [topicsResponse, submissionsResponse, milestonesResponse] = await Promise.all([
-            fetch(`${API_BASE}/api/topics/lecturer/${encodeURIComponent(user.user_code)}`, {
+            apiFetch(`${API_BASE}/api/topics/lecturer/${encodeURIComponent(user.user_code)}`, {
                 headers: { Authorization: `Bearer ${auth.token}` }
             }),
-            fetch(`${API_BASE}/api/submissions/topic/${encodeURIComponent(topicId)}`, { headers: { Authorization: `Bearer ${auth.token}` } }),
-            fetch(`${API_BASE}/api/milestones/lecturer`, { headers: { Authorization: `Bearer ${auth.token}` } })
+            apiFetch(`${API_BASE}/api/submissions/topic/${encodeURIComponent(topicId)}`, { headers: { Authorization: `Bearer ${auth.token}` } }),
+            apiFetch(`${API_BASE}/api/milestones/lecturer`, { headers: { Authorization: `Bearer ${auth.token}` } })
         ]);
         const topicsResult = await topicsResponse.json();
         const submissionsResult = await submissionsResponse.json();

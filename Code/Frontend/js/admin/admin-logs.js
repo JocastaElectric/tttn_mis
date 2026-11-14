@@ -1,24 +1,8 @@
 document.addEventListener("DOMContentLoaded", async () => {
     const baseUrl = window.APP_CONFIG.API_BASE_URL + "/api";
     const pageSize = 50;
-    const authRaw = sessionStorage.getItem("activeAuth");
-    let token = null;
-    let user = null;
-
-    if (authRaw) {
-        try {
-            const authObj = JSON.parse(authRaw);
-            token = authObj?.token || authRaw;
-            user = authObj?.user || null;
-        } catch (error) {
-            token = authRaw;
-        }
-    }
-
-    if (!token || !user || String(user.role).toUpperCase() !== "ADMIN") {
-        window.location.href = "../auth/index.html";
-        return;
-    }
+    const user = await window.verifyAuthSession("ADMIN");
+    if (!user) return;
 
     const tableBody = document.getElementById("logsTableBody");
     const searchInput = document.getElementById("searchInput");
@@ -78,9 +62,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         params.set("page", String(currentPage));
         params.set("limit", String(pageSize));
         try {
-            const response = await fetch(`${baseUrl}/activity-logs?${params}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await apiFetch(`${baseUrl}/activity-logs?${params}`);
             const result = await response.json();
             if (!response.ok || !result?.success || !Array.isArray(result.data)) {
                 throw new Error(result?.message || "Không tải được nhật ký hoạt động.");
@@ -266,9 +248,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         exportLogBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xuất...';
         try {
             const params = getFilterParams();
-            const response = await fetch(`${baseUrl}/activity-logs/export?${params}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await apiFetch(`${baseUrl}/activity-logs/export?${params}`);
             if (!response.ok) {
                 const result = await response.json().catch(() => ({}));
                 throw new Error(result.message || "Không thể xuất nhật ký hoạt động.");

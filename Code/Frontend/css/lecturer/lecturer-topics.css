@@ -86,12 +86,32 @@
 }
 
 .tab-badge {
-    background-color: #ef4444;
-    color: #ffffff;
+    background-color: #e2e8f0;
+    color: #475569;
     font-size: 11px;
     font-weight: 700;
     padding: 2px 6px;
     border-radius: 10px;
+}
+
+.tab-badge-pending {
+    background-color: #e2e8f0;
+    color: #475569;
+}
+
+.tab-badge-pending.has-pending {
+    background-color: #ef4444;
+    color: #ffffff;
+}
+
+.tab-badge-approved {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+.tab-badge-pool {
+    background-color: #dbeafe;
+    color: #1d4ed8;
 }
 
 /* BỘ LỌC VÀ TÌM KIẾM */

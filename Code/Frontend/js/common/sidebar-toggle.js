@@ -5,6 +5,13 @@
     var sidebar = document.querySelector('.sidebar');
     var btn = document.querySelector('.btn-menu-toggle');
     if (!layout || !sidebar || !btn) return;
+    var mobileQuery = window.matchMedia('(max-width: 1024px)');
+    var backdrop = document.createElement('button');
+    backdrop.type = 'button';
+    backdrop.className = 'sidebar-backdrop';
+    backdrop.setAttribute('aria-label', 'Đóng menu');
+    backdrop.hidden = true;
+    document.body.appendChild(backdrop);
 
     // Logo thương hiệu hiện trên topbar khi sidebar thu gọn
     var navLeft = btn.parentElement;
@@ -46,11 +53,15 @@
     }
     function apply(collapsed) {
         layout.classList.toggle('sidebar-collapsed', collapsed);
+        var mobileOpen = mobileQuery.matches && !collapsed;
+        layout.classList.toggle('sidebar-mobile-open', mobileOpen);
+        backdrop.hidden = !mobileOpen;
+        backdrop.classList.toggle('is-visible', mobileOpen);
         btn.setAttribute('aria-expanded', String(!collapsed));
-        btn.setAttribute('title', collapsed ? 'Mở rộng menu' : 'Thu nhỏ menu');
+        btn.setAttribute('title', collapsed ? 'Mở menu' : 'Đóng menu');
     }
 
-    apply(read());
+    apply(mobileQuery.matches ? true : read());
     // bật hiệu ứng chuyển động sau khi đã áp trạng thái ban đầu (tránh nhấp nháy khi tải trang)
     requestAnimationFrame(function () {
         requestAnimationFrame(function () { layout.classList.add('sidebar-ready'); });
@@ -59,6 +70,23 @@
     btn.addEventListener('click', function () {
         var collapsed = !layout.classList.contains('sidebar-collapsed');
         apply(collapsed);
-        save(collapsed);
+        if (!mobileQuery.matches) save(collapsed);
     });
+
+    backdrop.addEventListener('click', function () {
+        apply(true);
+    });
+
+    sidebar.addEventListener('click', function (event) {
+        if (mobileQuery.matches && event.target.closest('a')) apply(true);
+    });
+
+    var handleBreakpointChange = function () {
+        apply(mobileQuery.matches ? true : read());
+    };
+    if (mobileQuery.addEventListener) {
+        mobileQuery.addEventListener('change', handleBreakpointChange);
+    } else {
+        mobileQuery.addListener(handleBreakpointChange);
+    }
 })();

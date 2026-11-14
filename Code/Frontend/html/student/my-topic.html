@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="../../css/common/app-notifications.css">
     <link rel="stylesheet" href="../../css/common/student-logout-modal.css">
     <link rel="stylesheet" href="../../css/common/confirm-dialog.css">
+    <link rel="stylesheet" href="../../css/responsive.css">
 </head>
 <body>
 
@@ -36,7 +37,7 @@
                             <a href="work-schedule.html"><span class="icon"><i class="fa-solid fa-calendar-days"></i></span> Lịch làm việc</a>
                         </li>
                         <li class="menu-item">
-                            <a href="../shared/notifications.html"><span class="icon"><i class="fa-solid fa-bell"></i></span> Thông báo</a>
+                            <a href="../shared/notifications.html"><span class="icon"><i class="fa-solid fa-bell"></i></span> Thông báo<span id="sidebarNotificationBadge" class="sidebar-notification-badge" style="display: none;">0</span></a>
                         </li>
                         <li class="menu-item">
                             <a href="../shared/guidelines.html"><span class="icon"><i class="fa-solid fa-file-lines"></i></span> Tài liệu hướng dẫn</a>
@@ -73,10 +74,6 @@
                     <button class="btn-menu-toggle" aria-label="Toggle Navigation"><i class="fa-solid fa-bars"></i></button>
                 </div>
                 <div class="navbar-right">
-                    <a href="../shared/notifications.html" class="notification-btn" title="Thông báo">
-                        <i class="fa-solid fa-bell"></i>
-                        <span id="headerBadgeCount" class="badge-count">0</span>
-                    </a>
                     <div class="user-profile">
                         <span class="avatar-icon"><i class="fa-solid fa-circle-user"></i></span>
                         <span id="userName" class="user-name">Đang tải...</span>

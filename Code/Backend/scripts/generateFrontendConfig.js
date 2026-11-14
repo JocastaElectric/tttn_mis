@@ -15,6 +15,15 @@ if (!['http:', 'https:'].includes(apiUrl.protocol) || apiUrl.pathname !== '/' ||
 }
 
 const outputPath = path.join(__dirname, '..', '..', 'Frontend', 'js', 'config.js');
-const output = `window.APP_CONFIG = Object.freeze({ API_BASE_URL: ${JSON.stringify(apiUrl.origin)} });\n`;
+const apiConfigLine = /^window\.APP_CONFIG = Object\.freeze\(\{ API_BASE_URL: .+\}\);$/m;
+const existingConfig = fs.readFileSync(outputPath, 'utf8');
+if (!apiConfigLine.test(existingConfig)) {
+    throw new Error('Frontend config is missing its API_BASE_URL declaration.');
+}
+
+const output = existingConfig.replace(
+    apiConfigLine,
+    `window.APP_CONFIG = Object.freeze({ API_BASE_URL: ${JSON.stringify(apiUrl.origin)} });`
+);
 fs.writeFileSync(outputPath, output, 'utf8');
 console.log(`Frontend API configuration generated for ${apiUrl.origin}`);
